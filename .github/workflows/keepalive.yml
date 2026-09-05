@@ -14,9 +14,16 @@ name: keepalive
 
 on:
   schedule:
-    # Every 15 minutes. The job exits in seconds unless a ping is actually due,
-    # so this is cheap - and free on a public repository.
-    - cron: '*/15 * * * *'
+    # Twice an hour. A run that is not due exits in a few seconds and makes no
+    # API call at all, so the only real work happens ~5 times a day.
+    #
+    # Why poll instead of scheduling the ping itself every 301 minutes: cron
+    # cannot express "every 301 minutes", and 301 does not divide a 24-hour
+    # day, so the ping time drifts forward a little every cycle. The script
+    # tracks the real due time; this schedule just has to wake it up often
+    # enough to notice. Halve it to '*/15 * * * *' for tighter boundaries, or
+    # raise it to '0 * * * *' for fewer runs and up to an hour of slack.
+    - cron: '*/30 * * * *'
   workflow_dispatch:
     inputs:
       force:
@@ -28,7 +35,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: limitless-5-hour
+  group: no-5-hour-limit
   cancel-in-progress: false
 
 jobs:
@@ -40,9 +47,10 @@ jobs:
       - name: Check out
         uses: actions/checkout@v4
         with:
-          # Full history: the state commit at the end may need to rebase onto
-          # origin, which a shallow clone cannot do.
-          fetch-depth: 0
+          # Shallow: most runs do nothing, and this repo's history grows by a
+          # commit per ping. The save step deepens it only if a push is
+          # rejected and it actually has to rebase.
+          fetch-depth: 1
 
       - name: Is a ping due?
         id: due
@@ -64,13 +72,13 @@ jobs:
           fi
 
       - name: Set up Node
-        if: steps.due.outputs.due == 'true'
+        if: success() && steps.due.outputs.due == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install the CLIs that are enabled
-        if: steps.due.outputs.due == 'true'
+        if: success() && steps.due.outputs.due == 'true'
         run: |
           set -euo pipefail
           if grep -qiE '^[[:space:]]*CLAUDE_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env; then
@@ -81,7 +89,7 @@ jobs:
           fi
 
       - name: Restore Codex credentials
-        if: steps.due.outputs.due == 'true'
+        if: success() && steps.due.outputs.due == 'true'
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
         run: |
@@ -99,7 +107,7 @@ jobs:
           chmod 600 ~/.codex/auth.json
 
       - name: Ping
-        if: steps.due.outputs.due == 'true'
+        if: success() && steps.due.outputs.due == 'true'
         id: ping
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -126,7 +134,7 @@ jobs:
           set -e
 
           {
-            echo "### Limitless 5-Hour"
+            echo "### No 5-Hour Limit"
             echo ''
             echo '```'
             L5H_STATE_FILE=state/cloud-state.env bash bin/keepalive.sh --config cloud.env --status
@@ -148,11 +156,13 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add state/cloud-state.env
           git commit -m 'chore: record keepalive ping [skip ci]'
-          # Another run may have landed while this one was pinging.
+          # Another run may have landed while this one was pinging. Rebasing
+          # needs real history, so unshallow before the first retry.
           for attempt in 1 2 3; do
             if git push; then exit 0; fi
             echo "Push rejected (attempt $attempt) - rebasing onto origin."
-            git pull --rebase --autostash
+            git fetch --unshallow origin main 2>/dev/null || git fetch origin main
+            git pull --rebase --autostash origin main
           done
           echo "::error::Could not push the updated state after 3 attempts."
           exit 1

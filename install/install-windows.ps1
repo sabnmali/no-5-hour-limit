@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Installs the Limitless 5-Hour scheduled task on Windows.
+    Installs the No 5-Hour Limit scheduled task on Windows.
 
 .DESCRIPTION
     Registers a Task Scheduler entry that pokes bin\keepalive.ps1 every few
@@ -14,7 +14,7 @@
     usage window opens closer to the exact minute it becomes available.
 
 .PARAMETER TaskName
-    Name of the scheduled task. Default "Limitless5Hour".
+    Name of the scheduled task. Default "No5HourLimit".
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
@@ -22,7 +22,7 @@
 [CmdletBinding()]
 param(
     [int]    $CheckMinutes = 5,
-    [string] $TaskName = 'Limitless5Hour',
+    [string] $TaskName = 'No5HourLimit',
     [switch] $NoSkill
 )
 
@@ -38,7 +38,7 @@ function Write-Ok($Message)   { Write-Host "  OK  $Message" -ForegroundColor Gre
 function Write-Warn($Message) { Write-Host "  !   $Message" -ForegroundColor Yellow }
 
 Write-Host ''
-Write-Host '  Limitless 5-Hour - Windows installer' -ForegroundColor Cyan
+Write-Host '  No 5-Hour Limit - Windows installer' -ForegroundColor Cyan
 Write-Host '  ============================================================'
 Write-Host ''
 
@@ -102,12 +102,12 @@ if ($codexCmd) {
 # 3. Remember where we live + install the Claude Code skill
 # --------------------------------------------------------------------------
 $homeDir = [Environment]::GetFolderPath('UserProfile')
-Set-Content -LiteralPath (Join-Path $homeDir '.limitless-5-hour-path') -Value $RepoRoot -Encoding UTF8
-Write-Ok 'recorded the install path in ~\.limitless-5-hour-path'
+Set-Content -LiteralPath (Join-Path $homeDir '.no-5-hour-limit-path') -Value $RepoRoot -Encoding UTF8
+Write-Ok 'recorded the install path in ~\.no-5-hour-limit-path'
 
 if (-not $NoSkill) {
-    $skillSrc = Join-Path $RepoRoot 'skill\limitless-5-hour'
-    $skillDst = Join-Path $homeDir '.claude\skills\limitless-5-hour'
+    $skillSrc = Join-Path $RepoRoot 'skill\no-5-hour-limit'
+    $skillDst = Join-Path $homeDir '.claude\skills\no-5-hour-limit'
     if (Test-Path -LiteralPath $skillSrc) {
         New-Item -ItemType Directory -Path $skillDst -Force | Out-Null
         Copy-Item -Path (Join-Path $skillSrc '*') -Destination $skillDst -Recurse -Force
@@ -172,7 +172,7 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description 'Limitless 5-Hour: keeps Claude / Codex 5-hour usage windows rolling.' `
+    -Description 'No 5-Hour Limit: keeps Claude / Codex 5-hour usage windows rolling.' `
     -Force | Out-Null
 
 Write-Ok ("scheduled task '{0}' registered - checks every {1} minute(s)" -f $TaskName, $CheckMinutes)

@@ -1,9 +1,9 @@
 ---
-name: limitless-5-hour
-description: Inspect or control the Limitless 5-Hour keepalive - the local or GitHub Actions job that pings the Claude and Codex CLIs every ~5 hours so a fresh usage window is always open. Use when the user asks about their 5-hour limit/window, "kotam ne zaman yenilenir", "limitim ne durumda", "keepalive", "pencere ne zaman bitiyor", or wants to start/stop/check the keepalive, fire a ping now, or read its logs.
+name: no-5-hour-limit
+description: Inspect or control the No 5-Hour Limit keepalive - the local or GitHub Actions job that pings the Claude and Codex CLIs every ~5 hours so a fresh usage window is always open. Use when the user asks about their 5-hour limit/window, "kotam ne zaman yenilenir", "limitim ne durumda", "keepalive", "pencere ne zaman bitiyor", or wants to start/stop/check the keepalive, fire a ping now, or read its logs.
 ---
 
-# Limitless 5-Hour
+# No 5-Hour Limit
 
 A scheduled job that sends a tiny prompt to the Claude CLI (and optionally the
 Codex CLI) once every `INTERVAL_MINUTES` (default 301 = 5 h + 1 min). Each ping
@@ -14,8 +14,8 @@ instead of starting whenever the user happens to send their first real message.
 
 The repository root is wherever the user cloned it. Find it in this order:
 
-1. `LIMITLESS_5H_HOME` environment variable, if set.
-2. The path recorded in `~/.limitless-5-hour-path` (written by the installer).
+1. `NO_5H_LIMIT_HOME` environment variable, if set.
+2. The path recorded in `~/.no-5-hour-limit-path` (written by the installer).
 3. Ask the user.
 
 Set `REPO` to that path before running the commands below.

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Limitless 5-Hour - keeps AI CLI usage windows rolling.
+    No 5-Hour Limit - keeps AI CLI usage windows rolling.
 
 .DESCRIPTION
     Sends a minimal "ping" prompt to the Claude CLI and/or the Codex CLI once
@@ -74,7 +74,9 @@ $Config = @{
 
 if (Test-Path -LiteralPath $ConfigPath) {
     foreach ($line in (Get-Content -LiteralPath $ConfigPath)) {
-        $trimmed = $line.Trim()
+        # Windows PowerShell writes UTF-8 with a BOM, which would otherwise
+        # hide the '#' that marks the first line as a comment.
+        $trimmed = $line.TrimStart([char]0xFEFF).Trim()
         if ($trimmed -eq '' -or $trimmed.StartsWith('#')) { continue }
         $idx = $trimmed.IndexOf('=')
         if ($idx -lt 1) { continue }
@@ -322,7 +324,7 @@ function Show-Status {
     $state = Read-State
 
     Write-Host ''
-    Write-Host '  Limitless 5-Hour - status' -ForegroundColor Cyan
+    Write-Host '  No 5-Hour Limit - status' -ForegroundColor Cyan
     Write-Host '  ---------------------------------------------------------'
     Write-Host ("  config       : {0}" -f $ConfigPath)
     Write-Host ("  interval     : {0} minutes" -f $IntervalMinutes)
@@ -369,10 +371,10 @@ function Show-Status {
     }
 
     Write-Host ''
-    $task = Get-ScheduledTask -TaskName 'Limitless5Hour' -ErrorAction SilentlyContinue
+    $task = Get-ScheduledTask -TaskName 'No5HourLimit' -ErrorAction SilentlyContinue
     if ($task) {
         Write-Host ("  scheduler    : installed, state = {0}" -f $task.State) -ForegroundColor Green
-        $info = Get-ScheduledTaskInfo -TaskName 'Limitless5Hour' -ErrorAction SilentlyContinue
+        $info = Get-ScheduledTaskInfo -TaskName 'No5HourLimit' -ErrorAction SilentlyContinue
         if ($info) { Write-Host ("     next check  {0}" -f $info.NextRunTime) }
     } else {
         Write-Host '  scheduler    : NOT INSTALLED - run install\install-windows.ps1' -ForegroundColor Yellow

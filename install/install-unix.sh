@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Limitless 5-Hour - installer for macOS and Linux.
+# No 5-Hour Limit - installer for macOS and Linux.
 #
 #   macOS : registers a LaunchAgent (survives sleep and logout properly)
 #   Linux : adds a crontab entry
@@ -15,7 +15,7 @@ REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 KEEPALIVE="$REPO_ROOT/bin/keepalive.sh"
 
 CHECK_MINUTES=5
-LABEL="com.limitless5hour.keepalive"
+LABEL="com.no5hourlimit.keepalive"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -35,7 +35,7 @@ warn() { printf '  !   %s\n' "$*"; }
 step() { printf '  ->  %s\n' "$*"; }
 
 echo
-echo "  Limitless 5-Hour - installer"
+echo "  No 5-Hour Limit - installer"
 echo "  ============================================================"
 echo
 
@@ -89,12 +89,12 @@ else
 fi
 
 # --- 3. remember the path + install the Claude Code skill ------------------
-printf '%s\n' "$REPO_ROOT" > "$HOME/.limitless-5-hour-path"
-ok "recorded the install path in ~/.limitless-5-hour-path"
+printf '%s\n' "$REPO_ROOT" > "$HOME/.no-5-hour-limit-path"
+ok "recorded the install path in ~/.no-5-hour-limit-path"
 
-if [ -d "$REPO_ROOT/skill/limitless-5-hour" ]; then
-    mkdir -p "$HOME/.claude/skills/limitless-5-hour"
-    cp -R "$REPO_ROOT/skill/limitless-5-hour/." "$HOME/.claude/skills/limitless-5-hour/"
+if [ -d "$REPO_ROOT/skill/no-5-hour-limit" ]; then
+    mkdir -p "$HOME/.claude/skills/no-5-hour-limit"
+    cp -R "$REPO_ROOT/skill/no-5-hour-limit/." "$HOME/.claude/skills/no-5-hour-limit/"
     ok 'Claude Code skill installed - just ask Claude "limitim ne durumda?"'
 fi
 
@@ -139,8 +139,8 @@ PLIST_EOF
     launchctl load "$PLIST"
     ok "LaunchAgent installed: $PLIST (checks every $CHECK_MINUTES minute(s))"
 else
-    CRON_LINE="*/$CHECK_MINUTES * * * * /bin/bash \"$KEEPALIVE\" >/dev/null 2>&1  # limitless-5-hour"
-    ( crontab -l 2>/dev/null | grep -v 'limitless-5-hour' || true; echo "$CRON_LINE" ) | crontab -
+    CRON_LINE="*/$CHECK_MINUTES * * * * /bin/bash \"$KEEPALIVE\" >/dev/null 2>&1  # no-5-hour-limit"
+    ( crontab -l 2>/dev/null | grep -v 'no-5-hour-limit' || true; echo "$CRON_LINE" ) | crontab -
     ok "crontab entry installed (checks every $CHECK_MINUTES minute(s))"
     step "$CRON_LINE"
 fi

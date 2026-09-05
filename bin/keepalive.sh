@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Limitless 5-Hour - keeps AI CLI usage windows rolling (macOS / Linux).
+# No 5-Hour Limit - keeps AI CLI usage windows rolling (macOS / Linux).
 #
 # Sends a minimal "ping" prompt to the Claude CLI and/or the Codex CLI once the
 # configured interval has elapsed since the last successful ping. That opens a
@@ -132,7 +132,7 @@ case "$CODEX_LAST"  in ''|*[!0-9]*) CODEX_LAST=0  ;; esac
 
 save_state() {
     {
-        echo "# Limitless 5-Hour state - epoch seconds of the last successful ping"
+        echo "# No 5-Hour Limit state - epoch seconds of the last successful ping"
         echo "CLAUDE_LAST=$CLAUDE_LAST"
         echo "CODEX_LAST=$CODEX_LAST"
     } > "$STATE_FILE"
@@ -283,7 +283,7 @@ ping_codex() {
 show_status() {
     local now; now="$(date +%s)"
     echo
-    echo "  Limitless 5-Hour - status"
+    echo "  No 5-Hour Limit - status"
     echo "  ---------------------------------------------------------"
     echo "  config       : $CONFIG_PATH"
     echo "  interval     : $INTERVAL_MINUTES minutes"

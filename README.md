@@ -1,4 +1,4 @@
-# Limitless 5-Hour
+# No 5-Hour Limit
 
 **Keep your Claude and ChatGPT/Codex 5-hour usage windows on a schedule you control.**
 
@@ -56,8 +56,8 @@ it wakes.
 ## Install
 
 ```bash
-git clone https://github.com/<you>/limitless-5-hour.git
-cd limitless-5-hour
+git clone https://github.com/<you>/no-5-hour-limit.git
+cd no-5-hour-limit
 ```
 
 ### Windows
@@ -66,7 +66,7 @@ cd limitless-5-hour
 powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
 ```
 
-Creates a Task Scheduler entry named `Limitless5Hour` that runs as you, needs
+Creates a Task Scheduler entry named `No5HourLimit` that runs as you, needs
 no administrator rights, and survives reboots and sleep.
 
 ### macOS / Linux
@@ -124,7 +124,7 @@ For Codex, copy the whole contents of `~/.codex/auth.json` (optional).
 **2. Push the repo and add the secrets**
 
 ```bash
-gh repo create limitless-5-hour --public --source=. --remote=origin --push
+gh repo create no-5-hour-limit --public --source=. --remote=origin --push
 gh secret set CLAUDE_CODE_OAUTH_TOKEN
 gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json
 ```
@@ -149,12 +149,18 @@ up. Every ping writes a summary showing when the current window ends, and
 
 ### What to know before you rely on it
 
-- **Timing is approximate.** GitHub's scheduler is best-effort: runs are often
-  a few minutes late and occasionally half an hour. Windows still tile, the
-  boundaries just are not to the minute.
-- **Keep the repo public** for unlimited Actions minutes. On a private repo the
-  15-minute schedule would consume most of the 2000 free minutes - change the
-  cron to `0,30 * * * *` there.
+- **Timing is approximate.** The workflow wakes every 30 minutes and pings only
+  when the previous window has expired, so a new window opens within about half
+  an hour of the old one closing. GitHub's scheduler is best-effort on top of
+  that - runs are often a few minutes late. Windows still tile; the boundaries
+  just are not to the minute.
+- **It is free.** No server, no card, no paid tier. GitHub Actions minutes are
+  unlimited on public repositories; the workflow uses no paid service. On a
+  private repo the 30-minute schedule fits inside the 2000 free monthly
+  minutes, but there is not much room to spare - public is the easy choice.
+- **Only the ping costs tokens.** A run that is not due makes no API call at
+  all. The ping itself is one short exchange on the cheapest model, about five
+  times a day.
 - **Scheduled workflows are disabled after 60 days without repository
   activity.** Each ping commits the state file, which counts as activity.
 - **The token grants access to your subscription.** Only put it in a repository
@@ -186,9 +192,9 @@ powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Status
 ```
 
 ```
-  Limitless 5-Hour - status
+  No 5-Hour Limit - status
   ---------------------------------------------------------
-  config       : /home/you/limitless-5-hour/config.env
+  config       : /home/you/no-5-hour-limit/config.env
   interval     : 301 minutes
   quiet hours  : disabled (24/7)
 
@@ -199,7 +205,7 @@ powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Status
   codex        : disabled
 
   scheduler    : installed, state = Ready
-  log file     : /home/you/limitless-5-hour/logs/keepalive-2026-09.log
+  log file     : /home/you/no-5-hour-limit/logs/keepalive-2026-09.log
 ```
 
 If you installed the bundled Claude Code skill (the installer does it for you),
@@ -290,7 +296,7 @@ bin/keepalive.sh           macOS/Linux: same
 install/install-*.{ps1,sh} Register the scheduler + install the skill
 install/setup-cli-windows.ps1  Windows: native CLI install + login + re-register
 install/uninstall-*        Remove the scheduler (keeps config and logs)
-skill/limitless-5-hour/    Claude Code skill: ask about your window in chat
+skill/no-5-hour-limit/    Claude Code skill: ask about your window in chat
 config.example.env         Template for config.env
 logs/                      One log file per month
 state/                     Last-ping timestamps
@@ -328,7 +334,7 @@ CLAUDE_BIN=C:\Users\you\.local\bin\claude.exe
 
 **Nothing in the logs**
 Check the scheduler row in `-Status` / `--status`. On Windows, look for
-`Limitless5Hour` in Task Scheduler; on Linux, `crontab -l`.
+`No5HourLimit` in Task Scheduler; on Linux, `crontab -l`.
 
 **`usage limit reached`**
 Expected when you've already exhausted a window. The script backs off and

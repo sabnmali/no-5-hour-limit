@@ -1,4 +1,4 @@
-# Limitless 5-Hour
+# No 5-Hour Limit
 
 **Claude ve ChatGPT/Codex'in 5 saatlik kullanım pencerelerini senin belirlediğin
 saatlere oturt.**
@@ -59,8 +59,8 @@ gönderilir.
 ## Kurulum
 
 ```bash
-git clone https://github.com/<kullanici>/limitless-5-hour.git
-cd limitless-5-hour
+git clone https://github.com/<kullanici>/no-5-hour-limit.git
+cd no-5-hour-limit
 ```
 
 ### Windows
@@ -69,7 +69,7 @@ cd limitless-5-hour
 powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
 ```
 
-`Limitless5Hour` adında bir Görev Zamanlayıcı kaydı oluşturur. Senin
+`No5HourLimit` adında bir Görev Zamanlayıcı kaydı oluşturur. Senin
 kullanıcınla çalışır, yönetici yetkisi istemez, yeniden başlatma ve uyku
 sonrasında da devam eder.
 
@@ -128,7 +128,7 @@ Codex için `~/.codex/auth.json` dosyasının tamamını kopyala (isteğe bağl�
 **2. Depoyu gönder ve gizli anahtarları ekle**
 
 ```bash
-gh repo create limitless-5-hour --public --source=. --remote=origin --push
+gh repo create no-5-hour-limit --public --source=. --remote=origin --push
 gh secret set CLAUDE_CODE_OAUTH_TOKEN
 gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json
 ```
@@ -153,12 +153,17 @@ Her gönderim, pencerenin ne zaman biteceğini gösteren bir özet yazıyor;
 
 ### Güvenmeden önce bilmen gerekenler
 
-- **Zamanlama yaklaşıktır.** GitHub'ın zamanlayıcısı "elinden geleni yapar":
-  turlar çoğu zaman birkaç dakika, bazen yarım saat gecikir. Pencereler yine uç
-  uca dizilir, sadece sınırlar dakikası dakikasına olmaz.
-- **Depoyu public tut** — Actions dakikaları sınırsız olur. Private depoda
-  15 dakikalık tur, ücretsiz 2000 dakikanın çoğunu yer; orada cron'u
-  `0,30 * * * *` yap.
+- **Zamanlama yaklaşıktır.** İş akışı 30 dakikada bir uyanır ve sadece önceki
+  pencere dolduysa ping atar; yani yeni pencere, eskisi kapandıktan sonra
+  yarım saat içinde açılır. Üstüne GitHub'ın zamanlayıcısı da birkaç dakika
+  gecikebilir. Pencereler yine uç uca dizilir, sadece sınırlar dakikası
+  dakikasına olmaz.
+- **Tamamen ücretsiz.** Sunucu yok, kart yok, ücretli plan yok. Public
+  depolarda GitHub Actions dakikaları sınırsız. Private depoda 30 dakikalık tur
+  ücretsiz 2000 dakikaya sığar ama payı dardır — public en rahatı.
+- **Token sadece ping'de harcanır.** Sırası gelmemiş bir tur hiçbir API çağrısı
+  yapmaz. Ping'in kendisi, en ucuz modelde günde ~5 kez yapılan tek bir kısa
+  alışveriştir.
 - **60 gün hiç hareket olmayan depolarda zamanlanmış iş akışları kapatılır.**
   Her gönderim durum dosyasını commit ettiği için bu hareket sayılıyor.
 - **Token, aboneliğine erişim verir.** Sadece senin kontrolündeki bir depoya
@@ -190,7 +195,7 @@ powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Status
 ```
 
 ```
-  Limitless 5-Hour - status
+  No 5-Hour Limit - status
   ---------------------------------------------------------
   interval     : 301 minutes
   quiet hours  : disabled (24/7)
@@ -293,7 +298,7 @@ bin/keepalive.sh           macOS/Linux: aynısı
 install/install-*.{ps1,sh} Zamanlayıcıyı ve beceriyi kurar
 install/setup-cli-windows.ps1  Windows: yerel CLI kurulumu + giriş + yeniden kayıt
 install/uninstall-*        Zamanlayıcıyı kaldırır (ayar ve kayıtlar kalır)
-skill/limitless-5-hour/    Claude Code becerisi: sohbette limitini sorabilirsin
+skill/no-5-hour-limit/    Claude Code becerisi: sohbette limitini sorabilirsin
 config.example.env         config.env için şablon
 logs/                      Her ay için bir kayıt dosyası
 state/                     Son gönderim zamanları
@@ -330,7 +335,7 @@ CLAUDE_BIN=C:\Users\kullanici\.local\bin\claude.exe
 
 **Kayıtlarda hiçbir şey yok**
 `-Status` / `--status` çıktısındaki `scheduler` satırına bak. Windows'ta Görev
-Zamanlayıcı'da `Limitless5Hour`'ı, Linux'ta `crontab -l` çıktısını kontrol et.
+Zamanlayıcı'da `No5HourLimit`'ı, Linux'ta `crontab -l` çıktısını kontrol et.
 
 **`usage limit reached`**
 Pencereni zaten tükettiysen normaldir. Script geri çekilir, bir sonraki turda

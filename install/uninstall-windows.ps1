@@ -1,16 +1,16 @@
 <#
 .SYNOPSIS
-    Removes the Limitless 5-Hour scheduled task.
+    Removes the No 5-Hour Limit scheduled task.
 
 .PARAMETER TaskName
-    Name of the scheduled task. Default "Limitless5Hour".
+    Name of the scheduled task. Default "No5HourLimit".
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File install\uninstall-windows.ps1
 #>
 [CmdletBinding()]
 param(
-    [string] $TaskName = 'Limitless5Hour'
+    [string] $TaskName = 'No5HourLimit'
 )
 
 $ErrorActionPreference = 'Stop'

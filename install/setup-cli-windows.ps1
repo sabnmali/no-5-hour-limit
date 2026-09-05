@@ -36,7 +36,7 @@ function Write-Ok($m)   { Write-Host "  OK  $m" -ForegroundColor Green }
 function Write-Warn($m) { Write-Host "  !   $m" -ForegroundColor Yellow }
 
 Write-Host ''
-Write-Host '  Limitless 5-Hour - Claude CLI setup helper' -ForegroundColor Cyan
+Write-Host '  No 5-Hour Limit - Claude CLI setup helper' -ForegroundColor Cyan
 Write-Host '  ============================================================'
 
 # --------------------------------------------------------------------------
