@@ -258,13 +258,14 @@ gerek yok.
 
 | Anahtar | Varsayılan | Anlamı |
 |---|---|---|
-| `INTERVAL_MINUTES` | `301` | İki gönderim arası dakika. 300'ün altına inme — açık pencerenin içine mesaj atmak pencereyi boşa harcar. |
+| `INTERVAL_MINUTES` | `301` | İki gönderim arası dakika. 300'ün altına inme — açık pencerenin içine mesaj atmak pencereyi boşa harcar. 60'ın altı 60'a yuvarlanır. |
 | `CLAUDE_ENABLED` | `true` | Claude penceresini döndür. |
 | `CLAUDE_MODEL` | `haiku` | Gönderimde kullanılan model. En ucuzu en iyisi. |
 | `CLAUDE_PROMPT` | `ok` | Gönderilecek metin. Kısa tut. |
 | `CLAUDE_BIN` | *(kurulumda dolar)* | `claude` komutunun tam yolu. Zamanlayıcılar dar bir `PATH` ile çalıştığı için gerekli. |
 | `CODEX_ENABLED` | `false` | `true` yaparsan Codex penceresi de dönmeye başlar. |
 | `CODEX_MODEL` | *(boş)* | Boş = Codex ayarındaki varsayılan model. |
+| `CODEX_PROMPT` | `ok` | Codex'e gönderilecek metin. |
 | `CODEX_BIN` | *(kurulumda dolar)* | `codex` komutunun tam yolu. |
 | `CODEX_REASONING_EFFORT` | `minimal` | Codex gönderimini ucuz tutar. |
 | `LOG_RETENTION_DAYS` | `30` | Bundan eski kayıtları siler. `0` = hiç silme. |

@@ -255,13 +255,14 @@ take effect on the next tick; nothing to restart.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `INTERVAL_MINUTES` | `301` | Minutes between pings. Don't go below 300 — pinging inside a live window wastes it. |
+| `INTERVAL_MINUTES` | `301` | Minutes between pings. Don't go below 300 — pinging inside a live window wastes it. Values under 60 are clamped to 60. |
 | `CLAUDE_ENABLED` | `true` | Keep the Claude window rolling. |
 | `CLAUDE_MODEL` | `haiku` | Model used for the ping. Cheapest is best. |
 | `CLAUDE_PROMPT` | `ok` | The ping text. Keep it short. |
 | `CLAUDE_BIN` | *(filled in by the installer)* | Absolute path to `claude`. Needed because schedulers run with a stripped-down `PATH`. |
 | `CODEX_ENABLED` | `false` | Set to `true` to keep the Codex window rolling too. |
 | `CODEX_MODEL` | *(empty)* | Empty = whatever your Codex config defaults to. |
+| `CODEX_PROMPT` | `ok` | The Codex ping text. |
 | `CODEX_BIN` | *(filled in by the installer)* | Absolute path to `codex`. |
 | `CODEX_REASONING_EFFORT` | `minimal` | Keeps the Codex ping cheap. |
 | `LOG_RETENTION_DAYS` | `30` | Delete logs older than this. `0` = keep forever. |

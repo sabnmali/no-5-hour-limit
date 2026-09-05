@@ -52,8 +52,11 @@ repo, not `state/state.env`:
 
 ```
 git -C "<REPO>" pull --quiet
-L5H_STATE_FILE=state/cloud-state.env bash "<REPO>/bin/keepalive.sh" --config "<REPO>/cloud.env" --status
+L5H_STATE_FILE="<REPO>/state/cloud-state.env" bash "<REPO>/bin/keepalive.sh" --config "<REPO>/cloud.env" --status
 ```
+
+`L5H_STATE_FILE` must be absolute here - it is resolved against the current
+directory, not the repository.
 
 To ping now from the cloud, or to check recent runs:
 
@@ -71,9 +74,10 @@ changes cloud behaviour. `config.env` only affects the local scheduler.
 |---|---|
 | "When does my window reset?" / "Kotam ne zaman yenilenir?" | Run `--status` / `-Status` and report **window ends** and **next ping**. |
 | "Is it running?" | `--status` shows the scheduler row: installed / NOT INSTALLED. |
-| "Start a window now" | Run with `--force` / `-Force`. Warn that this consumes the current window and starts a new 5-hour one immediately. |
+| "Start a window now" | Run with `--force` / `-Force`. It sends a message immediately; it does not reset a window that is already open, so it only helps once the previous one has expired. |
 | "It isn't working" | Read the newest file in `<REPO>/logs/`. The most common cause is `not logged in` - the fix is `claude auth login` (or `codex login`). |
-| "Turn it off" | Run the uninstall script. It only removes the scheduler entry; config and logs stay. |
+| "Turn it off" (local) | Run the uninstall script. It only removes the scheduler entry; config and logs stay. |
+| "Turn it off" (cloud) | `gh workflow disable keepalive.yml`. The local uninstaller does not stop GitHub Actions. To revoke the credential too, follow SECURITY.md. |
 | "Also keep ChatGPT/Codex alive" | Set `CODEX_ENABLED=true` in `<REPO>/config.env` (local) or `<REPO>/cloud.env` (cloud, then commit and push). |
 | "Does it work when my PC is off?" | Only if the GitHub Actions workflow is set up. Check `gh run list --workflow keepalive.yml`. |
 
@@ -81,8 +85,8 @@ changes cloud behaviour. `config.env` only affects the local scheduler.
 
 `<REPO>/config.env` is a plain `KEY=VALUE` file. Keys:
 `INTERVAL_MINUTES`, `CLAUDE_ENABLED`, `CLAUDE_MODEL`, `CLAUDE_PROMPT`,
-`CODEX_ENABLED`, `CODEX_MODEL`, `CODEX_PROMPT`, `CODEX_REASONING_EFFORT`,
-`LOG_RETENTION_DAYS`, `QUIET_HOURS`.
+`CLAUDE_BIN`, `CODEX_ENABLED`, `CODEX_MODEL`, `CODEX_PROMPT`, `CODEX_BIN`,
+`CODEX_REASONING_EFFORT`, `LOG_RETENTION_DAYS`, `QUIET_HOURS`.
 
 Changes take effect on the next scheduler tick - no restart needed.
 

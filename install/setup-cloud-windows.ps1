@@ -122,7 +122,10 @@ if (-not $Repo) {
     Push-Location $RepoRoot
     $remote = (& git remote get-url origin 2>$null)
     Pop-Location
-    if ($remote -match 'github\.com[:/]+([^/]+)/([^/.]+)') {
+    # Keep dots in the name and strip only a trailing .git. The old
+    # ([^/.]+) turned owner/keep.alive.git into owner/keep, which would have
+    # uploaded the token to a different repository or failed outright.
+    if ($remote -match 'github\.com[:/]+([^/]+)/([^/]+?)(?:\.git)?/?\s*$') {
         $Repo = "$($Matches[1])/$($Matches[2])"
     }
 }
@@ -142,7 +145,16 @@ Say ''
 
 Say ''
 Say 'Copy the long token printed above (select it with the mouse, then Ctrl+C)'
-$token = Read-Host '  and paste it here, then press Enter'
+Say 'Nothing will appear as you paste - that is deliberate.'
+# The CLI already put the token on screen once. Repeating it in the scrollback
+# of a terminal that may be recorded is a needless second exposure.
+$secure = Read-Host '  Paste it here, then press Enter' -AsSecureString
+$bstr   = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+try {
+    $token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
+} finally {
+    [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+}
 $token = ($token + '').Trim()
 
 if ($token.Length -lt 20) {
@@ -186,6 +198,14 @@ if ($Codex) {
 # --------------------------------------------------------------------------
 Head 'Step 4 of 5 - opening your first window'
 
+# Remember what already exists, so a run left over from cron is never mistaken
+# for the one this script is about to start.
+$before = @()
+try {
+    $before = (& $gh.Source run list --workflow keepalive.yml --limit 20 `
+                  --json databaseId --repo $Repo 2>$null | ConvertFrom-Json).databaseId
+} catch { }
+
 & $gh.Source workflow run keepalive.yml -f force=true --repo $Repo
 if ($LASTEXITCODE -ne 0) { Die 'Could not start the workflow. Is Actions enabled on the repository?' }
 Ok 'workflow started'
@@ -199,11 +219,23 @@ $runId = $null
 $deadline = (Get-Date).AddMinutes(3)
 while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 5
-    $json = & $gh.Source run list --workflow keepalive.yml --limit 1 --json databaseId,status,conclusion --repo $Repo 2>$null
+
+    # Pick the newest run that was not there before the dispatch, then follow
+    # that fixed id. Watching "the latest run" could report success from a run
+    # that finished before this script even started.
+    if (-not $runId) {
+        try {
+            $listed = (& $gh.Source run list --workflow keepalive.yml --limit 20 `
+                          --json databaseId --repo $Repo 2>$null | ConvertFrom-Json).databaseId
+        } catch { $listed = @() }
+        $runId = $listed | Where-Object { $before -notcontains $_ } | Select-Object -First 1
+        if (-not $runId) { Write-Host '.' -NoNewline; continue }
+    }
+
+    $json = & $gh.Source run view $runId --json status,conclusion --repo $Repo 2>$null
     if (-not $json) { continue }
-    try { $run = ($json | ConvertFrom-Json)[0] } catch { continue }
+    try { $run = $json | ConvertFrom-Json } catch { continue }
     if (-not $run) { continue }
-    $runId = $run.databaseId
     if ($run.status -eq 'completed') {
         Write-Host ''
         if ($run.conclusion -eq 'success') {

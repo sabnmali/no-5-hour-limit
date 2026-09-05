@@ -17,9 +17,14 @@ commands on your behalf**.
 | Local CLI login | Whatever the CLI itself uses (`claude auth login`) | your machine only |
 
 The setup scripts hold the token in memory and pipe it straight into
-`gh secret set`. It is never written to a file, never echoed back, and never
-passed as a command-line argument (so it does not land in your shell history
-or the process list).
+`gh secret set`. It is never written to a file and never passed as a
+command-line argument, so it does not land in your shell history or the
+process list. Input is read with the echo turned off, so pasting it does not
+put it on screen a second time.
+
+What that cannot protect: `claude setup-token` prints the token once, by
+design. If your terminal is being recorded or its scrollback is shared, the
+token is in it. Revoke and reissue if that happens.
 
 Nothing secret is ever committed. `config.env` is git-ignored; `cloud.env` and
 `state/cloud-state.env` are committed on purpose and contain only settings and
@@ -67,9 +72,10 @@ spending risk to cap.
 
 ## Hardening already applied
 
-- Workflow triggers are `schedule` and `workflow_dispatch` only. There is no
-  `pull_request` trigger, so a fork or a pull request can never run this
-  workflow, and GitHub does not expose secrets to forks in any case.
+- Workflow triggers are `schedule` and `workflow_dispatch` only, so no pull
+  request against this repository can run it. The real guarantee is GitHub's:
+  a fork never receives this repository's secrets, whatever it runs in its own
+  copy.
 - `permissions:` grants `contents: write` and nothing else. That is the minimum
   needed to commit the timestamp file.
 - Third-party actions are pinned to commit SHAs, not tags, because a tag can be

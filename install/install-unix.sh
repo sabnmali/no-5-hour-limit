@@ -99,11 +99,23 @@ if [ -d "$REPO_ROOT/skill/no-5-hour-limit" ]; then
 fi
 
 # --- 4. scheduler ----------------------------------------------------------
+# A path containing & or < is legal on disk but breaks the plist it is pasted
+# into, so escape anything that is XML-significant.
+xml_escape() {
+    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' \
+                           -e 's/"/\&quot;/g' -e "s/'/\&apos;/g"
+}
+
 if [ "$(uname -s)" = "Darwin" ]; then
     PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
     mkdir -p "$HOME/Library/LaunchAgents"
 
     launchctl unload "$PLIST" 2>/dev/null || true
+
+    X_LABEL="$(xml_escape "$LABEL")"
+    X_KEEPALIVE="$(xml_escape "$KEEPALIVE")"
+    X_REPO_ROOT="$(xml_escape "$REPO_ROOT")"
+    X_PATH="$(xml_escape "$PATH")"
 
     cat > "$PLIST" <<PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -111,26 +123,26 @@ if [ "$(uname -s)" = "Darwin" ]; then
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>$LABEL</string>
+    <string>$X_LABEL</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>$KEEPALIVE</string>
+        <string>$X_KEEPALIVE</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$REPO_ROOT</string>
+    <string>$X_REPO_ROOT</string>
     <key>StartInterval</key>
     <integer>$((CHECK_MINUTES * 60))</integer>
     <key>RunAtLoad</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>$REPO_ROOT/logs/launchd.out.log</string>
+    <string>$X_REPO_ROOT/logs/launchd.out.log</string>
     <key>StandardErrorPath</key>
-    <string>$REPO_ROOT/logs/launchd.err.log</string>
+    <string>$X_REPO_ROOT/logs/launchd.err.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>$PATH</string>
+        <string>$X_PATH</string>
     </dict>
 </dict>
 </plist>
@@ -139,7 +151,10 @@ PLIST_EOF
     launchctl load "$PLIST"
     ok "LaunchAgent installed: $PLIST (checks every $CHECK_MINUTES minute(s))"
 else
-    CRON_LINE="*/$CHECK_MINUTES * * * * /bin/bash \"$KEEPALIVE\" >/dev/null 2>&1  # no-5-hour-limit"
+    # cron treats an unescaped % as end-of-command plus stdin, so a path
+    # containing one would silently truncate the job.
+    CRON_KEEPALIVE="$(printf '%s' "$KEEPALIVE" | sed 's/%/\\%/g')"
+    CRON_LINE="*/$CHECK_MINUTES * * * * /bin/bash \"$CRON_KEEPALIVE\" >/dev/null 2>&1  # no-5-hour-limit"
     ( crontab -l 2>/dev/null | grep -v 'no-5-hour-limit' || true; echo "$CRON_LINE" ) | crontab -
     ok "crontab entry installed (checks every $CHECK_MINUTES minute(s))"
     step "$CRON_LINE"

@@ -86,8 +86,11 @@ fi
 # --- 2. which repository ---------------------------------------------------
 if [ -z "$REPO" ]; then
     remote="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
-    if [[ "$remote" =~ github\.com[:/]+([^/]+)/([^/.]+) ]]; then
-        REPO="${BASH_REMATCH[1]}/${BASH_REMATCH[2]}"
+    # Keep dots in the name and strip only a trailing .git. The old
+    # ([^/.]+) turned owner/keep.alive.git into owner/keep, which would have
+    # uploaded the token to a different repository or failed outright.
+    if [[ "$remote" =~ github\.com[:/]+([^/]+)/([^/]+)$ ]]; then
+        REPO="${BASH_REMATCH[1]}/${BASH_REMATCH[2]%.git}"
     fi
 fi
 [ -n "$REPO" ] || die "Could not work out which GitHub repository to use. Re-run with:  --repo owner/name"
@@ -102,8 +105,13 @@ claude setup-token
 
 echo
 say "Copy the long token printed above,"
-printf '  paste it here and press Enter: '
+printf '  paste it here and press Enter (it will not be shown): '
+# Echo off: the CLI already put the token on screen once. Repeating it in the
+# scrollback of a terminal that may be recorded is a needless second exposure.
+stty -echo 2>/dev/null
 IFS= read -r TOKEN
+stty echo 2>/dev/null
+echo
 TOKEN="$(printf '%s' "$TOKEN" | tr -d '[:space:]')"
 
 [ "${#TOKEN}" -ge 20 ] || die "That does not look like a token. Run the script again and paste the whole line."
@@ -138,6 +146,11 @@ fi
 # --- 5. first window -------------------------------------------------------
 head_ "Step 4 of 5 - opening your first window"
 
+# Remember what already exists, so a run left over from cron is never mistaken
+# for the one this script is about to start.
+BEFORE="$(gh run list --workflow keepalive.yml --limit 20 --json databaseId \
+          --jq '[.[].databaseId] | join(",")' --repo "$REPO" 2>/dev/null || true)"
+
 gh workflow run keepalive.yml -f force=true --repo "$REPO" \
     || die "Could not start the workflow. Is Actions enabled on the repository?"
 ok "workflow started"
@@ -146,15 +159,29 @@ ok "workflow started"
 head_ "Step 5 of 5 - waiting for the result"
 
 deadline=$(( $(date +%s) + 180 ))
+run_id=""
 while [ "$(date +%s)" -lt "$deadline" ]; do
     sleep 5
-    json="$(gh run list --workflow keepalive.yml --limit 1 \
-            --json databaseId,status,conclusion --repo "$REPO" 2>/dev/null || true)"
+
+    # Pick the newest run that was not there before the dispatch, then follow
+    # that fixed id. Watching "the latest run" could report success from a run
+    # that finished before this script even started.
+    if [ -z "$run_id" ]; then
+        for candidate in $(gh run list --workflow keepalive.yml --limit 20 \
+                           --json databaseId --jq '.[].databaseId' --repo "$REPO" 2>/dev/null); do
+            case ",$BEFORE," in
+                *",$candidate,"*) ;;
+                *) run_id="$candidate"; break ;;
+            esac
+        done
+        [ -n "$run_id" ] || { printf '.'; continue; }
+    fi
+
+    json="$(gh run view "$run_id" --json status,conclusion --repo "$REPO" 2>/dev/null || true)"
     [ -n "$json" ] || continue
 
     status="$(printf '%s' "$json"     | tr -d ' \n' | sed -n 's/.*"status":"\([^"]*\)".*/\1/p')"
     conclusion="$(printf '%s' "$json" | tr -d ' \n' | sed -n 's/.*"conclusion":"\([^"]*\)".*/\1/p')"
-    run_id="$(printf '%s' "$json"     | tr -d ' \n' | sed -n 's/.*"databaseId":\([0-9]*\).*/\1/p')"
 
     if [ "$status" = "completed" ]; then
         echo

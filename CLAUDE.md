@@ -64,9 +64,10 @@ powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
 ./install/install-unix.sh
 ```
 
-The installer registers the scheduler, pins the absolute CLI paths into
-`config.env`, installs the Claude Code skill, and then runs the job once to
-prove the scheduler can actually reach the CLI. On Windows, if it reports that
+On Windows the installer registers the scheduler, pins the absolute CLI paths
+into `config.env`, installs the Claude Code skill, and then runs the job once
+to prove the scheduler can actually reach the CLI. The Unix installer does the
+first three; it does not run that verification. On Windows, if it reports that
 the scheduled task cannot see `claude`, run
 `install\setup-cli-windows.ps1` - the npm global folder is not always visible
 to the Task Scheduler service, and that script switches to the native build.
@@ -81,6 +82,10 @@ Two plain `KEY=VALUE` files, same keys in both:
   `config.example.env` by the installer.
 - `cloud.env` - GitHub Actions only. Committed, so it can be edited from
   github.com without a computer.
+
+The status view's "window ends" is an estimate: it is the last ping plus five
+hours. If the user opened the window themselves before the ping, the real
+boundary is earlier.
 
 Keys: `INTERVAL_MINUTES` (do not go below 300), `CLAUDE_ENABLED`,
 `CLAUDE_MODEL`, `CLAUDE_PROMPT`, `CLAUDE_BIN`, `CODEX_ENABLED`, `CODEX_MODEL`,
@@ -99,9 +104,13 @@ L5H_STATE_FILE=state/cloud-state.env ./bin/keepalive.sh --config cloud.env --sta
 gh run list --workflow keepalive.yml -L 5
 ```
 
-`--due` reports what is owed and exits 3 when nothing is; `--force` pings
-immediately. Warn before `--force`: it burns whatever window is currently open
-and starts a new one.
+`--due` reports what is owed and exits 3 when nothing is; `--enabled` lists
+the providers a config turns on; `--force` pings immediately.
+
+Be accurate about `--force`: it sends a message now, ignoring the interval and
+quiet hours. It does **not** close or reset a window that is already open - a
+message inside a live window changes nothing except spending a little quota.
+It only opens a new window if the previous one has already expired.
 
 ## Security expectations
 

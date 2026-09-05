@@ -72,6 +72,13 @@ $Config = @{
     QUIET_HOURS            = ''
 }
 
+# A config path given on the command line has to exist. Falling back to the
+# defaults there would silently enable Claude against the caller's intent.
+if ($PSBoundParameters.ContainsKey('ConfigPath') -and -not (Test-Path -LiteralPath $ConfigPath)) {
+    Write-Host "config file not found: $ConfigPath" -ForegroundColor Red
+    exit 2
+}
+
 if (Test-Path -LiteralPath $ConfigPath) {
     foreach ($line in (Get-Content -LiteralPath $ConfigPath)) {
         # Windows PowerShell writes UTF-8 with a BOM, which would otherwise
@@ -158,10 +165,18 @@ function Read-State {
 }
 
 function Write-State($State) {
+    # Write beside the real file and rename it into place, so an interrupted
+    # run cannot leave half a state behind. A failure here has to be loud: a
+    # lost timestamp means the next run pings again for nothing.
+    $tmp = "$StateFile.tmp.$PID"
     try {
-        ($State | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $StateFile -Encoding UTF8
+        ($State | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $tmp -Encoding UTF8
+        Move-Item -LiteralPath $tmp -Destination $StateFile -Force
+        return $true
     } catch {
-        Write-Log 'warn' "could not write state file: $($_.Exception.Message)"
+        Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
+        Write-Log 'error' "could not write state file: $($_.Exception.Message)"
+        return $false
     }
 }
 
@@ -192,8 +207,12 @@ function Test-QuietHours {
     $spec = Get-Cfg 'QUIET_HOURS'
     if ([string]::IsNullOrWhiteSpace($spec)) { return $false }
     if ($spec -notmatch '^\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*$') { return $false }
-    $start = [int] $Matches[1] * 60 + [int] $Matches[2]
-    $end   = [int] $Matches[3] * 60 + [int] $Matches[4]
+    $sh = [int] $Matches[1]; $sm = [int] $Matches[2]
+    $eh = [int] $Matches[3]; $em = [int] $Matches[4]
+    # Without this, a range like 00:00-99:00 would silence the whole day.
+    if ($sh -gt 23 -or $eh -gt 23 -or $sm -gt 59 -or $em -gt 59) { return $false }
+    $start = $sh * 60 + $sm
+    $end   = $eh * 60 + $em
     $nowM  = (Get-Date).Hour * 60 + (Get-Date).Minute
     if ($start -le $end) { return ($nowM -ge $start -and $nowM -lt $end) }
     return ($nowM -ge $start -or $nowM -lt $end)   # range crosses midnight
@@ -253,14 +272,24 @@ function Invoke-ClaudePing {
     if ($DryRun) { return @{ ok = $true; message = "DRY RUN: claude $($cliArgs -join ' ')" } }
 
     $raw = ''
+    $code = 0
     Push-Location $WorkDir
     try {
         $raw = (& $exe @cliArgs 2>&1 | Out-String)
+        $code = $LASTEXITCODE
     } catch {
         Pop-Location
         return @{ ok = $false; message = "claude invocation failed: $($_.Exception.Message)" }
     }
     Pop-Location
+
+    # Matching on text alone is not enough: an unrecognised failure would be
+    # recorded as a successful ping and stall the schedule for five hours.
+    if ($code -ne 0) {
+        $flat = (Protect-Secrets (($raw -replace '\s+', ' ').Trim()))
+        if ($flat.Length -gt 200) { $flat = $flat.Substring(0, 200) + '...' }
+        return @{ ok = $false; message = "claude exited $code`: $flat" }
+    }
 
     $json = $null
     try { $json = $raw | ConvertFrom-Json } catch { }
@@ -314,10 +343,18 @@ function Invoke-CodexPing {
     if ($DryRun) { return @{ ok = $true; message = "DRY RUN: codex $($cliArgs -join ' ')" } }
 
     $raw = ''
+    $code = 0
     try {
         $raw = (& $exe @cliArgs 2>&1 | Out-String)
+        $code = $LASTEXITCODE
     } catch {
         return @{ ok = $false; message = "codex invocation failed: $($_.Exception.Message)" }
+    }
+
+    if ($code -ne 0) {
+        $flat = (Protect-Secrets (($raw -replace '\s+', ' ').Trim()))
+        if ($flat.Length -gt 200) { $flat = $flat.Substring(0, 200) + '...' }
+        return @{ ok = $false; message = "codex exited $code`: $flat" }
     }
 
     if ($raw -match '(?i)usage limit') {
@@ -424,12 +461,14 @@ if ((Test-QuietHours) -and (-not $Force)) {
 }
 
 $state   = Read-State
-$nowUtc  = [datetime]::UtcNow
 $anyFail = $false
-$didWork = $false
 
 foreach ($name in @('claude', 'codex')) {
     if (-not (Get-CfgBool ('{0}_ENABLED' -f $name.ToUpperInvariant()))) { continue }
+
+    # Read the clock per provider: a slow first ping must not make the second
+    # one look older than it is.
+    $nowUtc = [datetime]::UtcNow
 
     $last = Get-LastPingUtc $state $name
     if ((-not $Force) -and ($null -ne $last)) {
@@ -437,7 +476,6 @@ foreach ($name in @('claude', 'codex')) {
         if ($elapsed -lt $IntervalMinutes) { continue }
     }
 
-    $didWork = $true
     if ($name -eq 'claude') { $result = Invoke-ClaudePing } else { $result = Invoke-CodexPing }
 
     if ($result.ok) {
@@ -447,6 +485,10 @@ foreach ($name in @('claude', 'codex')) {
                 lastSuccessUtc = $nowUtc.ToString('o')
                 lastMessage    = $result.message
             }
+            # Save straight away. Batching the write to the end means a hang on
+            # the second provider throws away the first one's success, and the
+            # next run pings it again for nothing.
+            if (-not (Write-State $state)) { $anyFail = $true }
         }
     } else {
         $anyFail = $true
@@ -454,6 +496,5 @@ foreach ($name in @('claude', 'codex')) {
     }
 }
 
-if ($didWork -and (-not $DryRun)) { Write-State $state }
 if ($anyFail) { exit 1 }
 exit 0

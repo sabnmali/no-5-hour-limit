@@ -184,6 +184,7 @@ Write-Ok ("scheduled task '{0}' registered - checks every {1} minute(s)" -f $Tas
 # and, on some machines, a different view of the user profile - than an
 # interactive shell. A CLI that resolves fine here can be invisible there, so
 # actually run the task once and read what it wrote.
+$script:Verified = $false
 Write-Host ''
 Write-Step 'verifying the task can reach the CLIs...'
 
@@ -215,8 +216,17 @@ if ($newLines.Count -eq 0) {
 } elseif ($newLines -match 'ERROR') {
     Write-Warn 'the task ran but reported an error:'
     $newLines | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
-} else {
+} elseif ($newLines -match 'quiet hours') {
+    Write-Warn 'the task ran, but quiet hours are active so it did not ping.'
+    Write-Host  '      Clear QUIET_HOURS in config.env to verify properly.' -ForegroundColor Yellow
+} elseif ($newLines -match 'claude ok|codex ok') {
+    # Only an actual success line counts. "No error in the log" is not the same
+    # thing - a skipped run leaves no error either.
     Write-Ok 'verified - the scheduled task pinged successfully'
+    $newLines | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
+    $script:Verified = $true
+} else {
+    Write-Warn 'the task ran but the outcome was unclear:'
     $newLines | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
 }
 
@@ -228,10 +238,16 @@ Write-Host '  Installed.' -ForegroundColor Green
 Write-Host ''
 Write-Host '  Next steps'
 Write-Host '  ----------'
-Write-Host '   1. If the check above said "NOT logged in", run:  claude auth login'
-Write-Host '   2. Fire the first ping now:'
-Write-Host ('        powershell -ExecutionPolicy Bypass -File "{0}" -Force' -f $Keepalive)
-Write-Host '   3. Check on it any time:'
+if ($script:Verified) {
+    # It already pinged during the check above; a second one would just spend
+    # quota for nothing.
+    Write-Host '   Nothing - a window is already open and the task will keep it that way.'
+} else {
+    Write-Host '   1. If the check above said "NOT logged in", run:  claude auth login'
+    Write-Host '   2. Then open the first window:'
+    Write-Host ('        powershell -ExecutionPolicy Bypass -File "{0}" -Force' -f $Keepalive)
+}
+Write-Host '   Check on it any time:'
 Write-Host ('        powershell -ExecutionPolicy Bypass -File "{0}" -Status' -f $Keepalive)
 Write-Host ''
 Write-Host ('  To remove:  powershell -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $PSScriptRoot 'uninstall-windows.ps1'))

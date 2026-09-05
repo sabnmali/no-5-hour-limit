@@ -14,6 +14,7 @@
 #   ./bin/keepalive.sh --force      ping now, ignoring interval + quiet hours
 #   ./bin/keepalive.sh --dry-run    print the commands without running them
 #   ./bin/keepalive.sh --due        list providers needing a ping; exit 3 if none
+#   ./bin/keepalive.sh --enabled    list providers the config turns on
 #   ./bin/keepalive.sh --config F   read settings from F instead of config.env
 #
 # Env overrides: L5H_CONFIG (config file), L5H_STATE_FILE (state file).
@@ -34,6 +35,8 @@ DO_STATUS=0
 DO_FORCE=0
 DO_DRYRUN=0
 DO_DUE=0
+DO_ENABLED=0
+CONFIG_REQUIRED=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -41,8 +44,9 @@ while [ $# -gt 0 ]; do
         --force)    DO_FORCE=1 ;;
         --dry-run)  DO_DRYRUN=1 ;;
         --due)      DO_DUE=1 ;;
-        --config)   shift; CONFIG_PATH="${1:-}" ;;
-        -h|--help)  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --enabled)  DO_ENABLED=1 ;;
+        --config)   shift; CONFIG_PATH="${1:-}"; CONFIG_REQUIRED=1 ;;
+        -h|--help)  sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)          echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
@@ -69,9 +73,7 @@ QUIET_HOURS=
 # Keys a file is allowed to set. Everything else is ignored, so a tampered or
 # careless config cannot reach into the script and reassign PATH, STATE_FILE,
 # DO_FORCE or anything else it was never meant to touch.
-CONFIG_KEYS="INTERVAL_MINUTES CLAUDE_ENABLED CLAUDE_MODEL CLAUDE_PROMPT CLAUDE_BIN
-CODEX_ENABLED CODEX_MODEL CODEX_PROMPT CODEX_BIN CODEX_REASONING_EFFORT
-LOG_RETENTION_DAYS QUIET_HOURS"
+CONFIG_KEYS="INTERVAL_MINUTES CLAUDE_ENABLED CLAUDE_MODEL CLAUDE_PROMPT CLAUDE_BIN CODEX_ENABLED CODEX_MODEL CODEX_PROMPT CODEX_BIN CODEX_REASONING_EFFORT LOG_RETENTION_DAYS QUIET_HOURS"
 STATE_KEYS="CLAUDE_LAST CODEX_LAST"
 
 load_kv_file() {
@@ -89,19 +91,34 @@ load_kv_file() {
         val="${val%"${val##*[![:space:]]}"}"
         val="${val%\"}"; val="${val#\"}"
         val="${val%\'}"; val="${val#\'}"
-        case " $(printf '%s' "$allowed" | tr '
-' ' ') " in
+        case " $allowed " in
             *" $key "*) printf -v "$key" '%s' "$val" ;;
         esac
     done < "$file"
 }
 
+# A config path given on the command line has to exist. Falling back to the
+# defaults there would silently enable Claude against the caller's intent.
+if [ "$CONFIG_REQUIRED" -eq 1 ] && [ ! -f "$CONFIG_PATH" ]; then
+    echo "config file not found: $CONFIG_PATH" >&2
+    exit 2
+fi
+
 load_kv_file "$CONFIG_PATH" "$CONFIG_KEYS"
 
-case "$INTERVAL_MINUTES" in
-    ''|*[!0-9]*) INTERVAL_MINUTES=301 ;;
-esac
-[ "$INTERVAL_MINUTES" -ge 1 ] 2>/dev/null || INTERVAL_MINUTES=301
+to_int() {
+    # Normalises a decimal number. Without the 10# prefix, arithmetic reads a
+    # leading-zero value as octal, so 0301 would silently become 193 - and 0308
+    # would abort the script outright.
+    local v="${1:-}"
+    case "$v" in ''|*[!0-9]*) return 1 ;; esac
+    # 18 digits stays inside a signed 64-bit integer. It has to be well above
+    # 10, because epoch seconds are 10 digits and this normalises those too.
+    [ "${#v}" -le 18 ] || return 1
+    printf '%s' "$((10#$v))"
+}
+
+INTERVAL_MINUTES="$(to_int "$INTERVAL_MINUTES")" || INTERVAL_MINUTES=301
 # Floor: a window lasts 300 minutes, so anything under that pings inside a live
 # window and buys nothing. 60 is a hard stop against a typo turning this into a
 # quota-burning loop.
@@ -140,15 +157,41 @@ prune_logs() {
 CLAUDE_LAST=0
 CODEX_LAST=0
 load_kv_file "$STATE_FILE" "$STATE_KEYS"
-case "$CLAUDE_LAST" in ''|*[!0-9]*) CLAUDE_LAST=0 ;; esac
-case "$CODEX_LAST"  in ''|*[!0-9]*) CODEX_LAST=0  ;; esac
+CLAUDE_LAST="$(to_int "$CLAUDE_LAST")" || CLAUDE_LAST=0
+CODEX_LAST="$(to_int "$CODEX_LAST")"   || CODEX_LAST=0
 
 save_state() {
+    # Write to a temporary file in the same directory and rename it into place,
+    # so an interrupted run cannot leave a half-written state behind. A failure
+    # here has to be loud: a lost timestamp means the next run pings again.
+    local tmp="$STATE_FILE.tmp.$$"
     {
         echo "# No 5-Hour Limit state - epoch seconds of the last successful ping"
         echo "CLAUDE_LAST=$CLAUDE_LAST"
         echo "CODEX_LAST=$CODEX_LAST"
-    } > "$STATE_FILE"
+    } > "$tmp" || { rm -f "$tmp"; log error "could not write state to $STATE_FILE"; return 1; }
+    mv -f "$tmp" "$STATE_FILE" || { rm -f "$tmp"; log error "could not replace $STATE_FILE"; return 1; }
+    return 0
+}
+
+# Two runs starting at once would both read the old timestamp and both ping.
+# On Linux cron that happens on its own as soon as one ping outlives the poll
+# interval. mkdir is the portable atomic primitive; flock is not on macOS.
+LOCK_DIR="$STATE_DIR/.lock"
+acquire_lock() {
+    local tries=0
+    while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+        # Reclaim a lock left behind by a killed run.
+        if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +15 2>/dev/null)" ]; then
+            rmdir "$LOCK_DIR" 2>/dev/null || true
+            continue
+        fi
+        tries=$((tries + 1))
+        [ "$tries" -ge 3 ] && return 1
+        sleep 2
+    done
+    trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+    return 0
 }
 
 fmt_time() {
@@ -167,8 +210,12 @@ in_quiet_hours() {
     local re='^([0-9]{1,2}):([0-9]{2})-([0-9]{1,2}):([0-9]{2})$'
     local spec; spec="$(printf '%s' "$QUIET_HOURS" | tr -d '[:space:]')"
     [[ "$spec" =~ $re ]] || return 1
-    local start=$((10#${BASH_REMATCH[1]} * 60 + 10#${BASH_REMATCH[2]}))
-    local end=$((10#${BASH_REMATCH[3]} * 60 + 10#${BASH_REMATCH[4]}))
+    local sh=$((10#${BASH_REMATCH[1]})) sm=$((10#${BASH_REMATCH[2]}))
+    local eh=$((10#${BASH_REMATCH[3]})) em=$((10#${BASH_REMATCH[4]}))
+    # Without this, a range like 00:00-99:00 would silence the whole day.
+    [ "$sh" -le 23 ] && [ "$eh" -le 23 ] && [ "$sm" -le 59 ] && [ "$em" -le 59 ] || return 1
+    local start=$((sh * 60 + sm))
+    local end=$((eh * 60 + em))
     local now=$((10#$(date +%H) * 60 + 10#$(date +%M)))
     if [ "$start" -le "$end" ]; then
         [ "$now" -ge "$start" ] && [ "$now" -lt "$end" ]
@@ -237,19 +284,26 @@ ping_claude() {
         return 0
     fi
 
-    local out
-    out="$(cd "$WORK_DIR" && "$exe" "${args[@]}" 2>&1)"
+    local out rc
+    out="$(cd "$WORK_DIR" && "$exe" "${args[@]}" 2>&1)"; rc=$?
+
+    # Matching on text alone is not enough: an unrecognised failure would be
+    # recorded as a successful ping and stall the schedule for five hours.
+    if [ "$rc" -ne 0 ]; then
+        PING_MESSAGE="claude exited $rc: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-200)"
+        return 1
+    fi
 
     if printf '%s' "$out" | grep -qi 'not logged in'; then
         PING_MESSAGE='not logged in - run: claude auth login'
         return 1
     fi
     if printf '%s' "$out" | grep -q '"is_error"[[:space:]]*:[[:space:]]*true'; then
-        PING_MESSAGE="claude error: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)"
+        PING_MESSAGE="claude error: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-300)"
         return 1
     fi
     if ! printf '%s' "$out" | grep -q '"type"[[:space:]]*:[[:space:]]*"result"'; then
-        PING_MESSAGE="unreadable claude output: $(printf '%s' "$out" | tr '\n' ' ' | cut -c1-300)"
+        PING_MESSAGE="unreadable claude output: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-300)"
         return 1
     fi
 
@@ -275,8 +329,13 @@ ping_codex() {
         return 0
     fi
 
-    local out
-    out="$("$exe" "${args[@]}" 2>&1)"
+    local out rc
+    out="$("$exe" "${args[@]}" 2>&1)"; rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+        PING_MESSAGE="codex exited $rc: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-200)"
+        return 1
+    fi
 
     if printf '%s' "$out" | grep -qi 'usage limit'; then
         PING_MESSAGE='usage limit reached - will retry next cycle'
@@ -353,7 +412,10 @@ show_status() {
             echo "     check runs  gh run list --workflow keepalive.yml"
             ;;
         *)
-            if crontab -l 2>/dev/null | grep -q 'keepalive.sh'; then
+            if [ "$(uname -s)" = "Darwin" ] &&
+               launchctl list 2>/dev/null | grep -q 'com.no5hourlimit.keepalive'; then
+                echo "  scheduler    : LaunchAgent loaded (com.no5hourlimit.keepalive)"
+            elif crontab -l 2>/dev/null | grep -q 'keepalive.sh'; then
                 echo "  scheduler    : cron entry found"
                 crontab -l 2>/dev/null | grep 'keepalive.sh' | sed 's/^/     /'
             else
@@ -370,6 +432,17 @@ show_status() {
 # ---------------------------------------------------------------------------
 if [ "$DO_STATUS" -eq 1 ]; then
     show_status
+    exit 0
+fi
+
+# --enabled: name the providers this config turns on. The workflow uses this
+# instead of grepping the config itself, so there is one interpretation of
+# "enabled" rather than two that can disagree about quoting or a missing key.
+if [ "$DO_ENABLED" -eq 1 ]; then
+    ENABLED_LIST=""
+    is_true "$CLAUDE_ENABLED" && ENABLED_LIST="$ENABLED_LIST claude"
+    is_true "$CODEX_ENABLED"  && ENABLED_LIST="$ENABLED_LIST codex"
+    printf '%s\n' "${ENABLED_LIST# }"
     exit 0
 fi
 
@@ -409,9 +482,12 @@ if in_quiet_hours && [ "$DO_FORCE" -eq 0 ]; then
     exit 0
 fi
 
-NOW="$(date +%s)"
+acquire_lock || {
+    log warn "another run is already working - skipping this one"
+    exit 0
+}
+
 ANY_FAIL=0
-DID_WORK=0
 
 for provider in claude codex; do
     if [ "$provider" = claude ]; then enabled="$CLAUDE_ENABLED"; last="$CLAUDE_LAST"
@@ -419,26 +495,29 @@ for provider in claude codex; do
 
     is_true "$enabled" || continue
 
+    # Read the clock per provider: a slow first ping must not make the second
+    # one look older than it is.
+    NOW="$(date +%s)"
+
     if [ "$DO_FORCE" -eq 0 ] && [ "$last" -gt 0 ]; then
         [ $(( (NOW - last) / 60 )) -lt "$INTERVAL_MINUTES" ] && continue
     fi
 
-    DID_WORK=1
     if [ "$provider" = claude ]; then ping_claude; rc=$?; else ping_codex; rc=$?; fi
 
     if [ "$rc" -eq 0 ]; then
         log info "$PING_MESSAGE"
         if [ "$DO_DRYRUN" -eq 0 ]; then
             if [ "$provider" = claude ]; then CLAUDE_LAST="$NOW"; else CODEX_LAST="$NOW"; fi
+            # Save straight away. Batching the write to the end means a hang or
+            # a job timeout on the second provider throws away the first one's
+            # success, and the next run pings it again for nothing.
+            save_state || ANY_FAIL=1
         fi
     else
         ANY_FAIL=1
         log error "$provider: $PING_MESSAGE"
     fi
 done
-
-if [ "$DID_WORK" -eq 1 ] && [ "$DO_DRYRUN" -eq 0 ]; then
-    save_state
-fi
 
 exit "$ANY_FAIL"

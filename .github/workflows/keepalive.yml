@@ -60,18 +60,35 @@ jobs:
           FORCE: ${{ inputs.force }}
         run: |
           set -uo pipefail
+
+          # One source of truth for "which providers are on": ask the script.
+          # Grepping the config here would be a second, subtly different parser
+          # - it would miss CLAUDE_ENABLED="true" and read a missing key as off
+          # when the script defaults it to on.
+          enabled="$(bash bin/keepalive.sh --config cloud.env --enabled)" || {
+            echo "::error::Could not read cloud.env"; exit 1; }
+          echo "Enabled providers: ${enabled:-none}"
+          echo "enabled=$enabled" >> "$GITHUB_OUTPUT"
+
           if [ "${FORCE:-false}" = "true" ]; then
             echo "Forced by workflow_dispatch."
             echo "due=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if out="$(L5H_STATE_FILE=state/cloud-state.env bash bin/keepalive.sh --config cloud.env --due)"; then
-            echo "Due: $out"
-            echo "due=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "$out"
-            echo "due=false" >> "$GITHUB_OUTPUT"
-          fi
+
+          set +e
+          out="$(L5H_STATE_FILE=state/cloud-state.env bash bin/keepalive.sh --config cloud.env --due)"
+          rc=$?
+          set -e
+
+          # 0 = something is owed, 3 = nothing owed. Anything else is a broken
+          # script or config, and must fail the run rather than quietly look
+          # like "nothing to do" - that is how a keepalive dies unnoticed.
+          case "$rc" in
+            0) echo "Due: $out"; echo "due=true"  >> "$GITHUB_OUTPUT" ;;
+            3) echo "$out";      echo "due=false" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::keepalive.sh --due failed with exit $rc: $out"; exit 1 ;;
+          esac
 
       - name: Set up Node
         if: success() && steps.due.outputs.due == 'true'
@@ -81,25 +98,24 @@ jobs:
 
       - name: Install the CLIs that are enabled
         if: success() && steps.due.outputs.due == 'true'
+        env:
+          ENABLED: ${{ steps.due.outputs.enabled }}
         run: |
           set -euo pipefail
-          if grep -qiE '^[[:space:]]*CLAUDE_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env; then
-            npm install -g @anthropic-ai/claude-code
-          fi
-          if grep -qiE '^[[:space:]]*CODEX_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env; then
-            npm install -g @openai/codex
-          fi
+          case " $ENABLED " in *" claude "*) npm install -g @anthropic-ai/claude-code ;; esac
+          case " $ENABLED " in *" codex "*)  npm install -g @openai/codex ;; esac
 
       - name: Restore Codex credentials
         if: success() && steps.due.outputs.due == 'true'
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+          ENABLED: ${{ steps.due.outputs.enabled }}
         run: |
           set -euo pipefail
-          if ! grep -qiE '^[[:space:]]*CODEX_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env; then
-            echo "Codex disabled in cloud.env - skipping."
-            exit 0
-          fi
+          case " $ENABLED " in
+            *" codex "*) ;;
+            *) echo "Codex disabled in cloud.env - skipping."; exit 0 ;;
+          esac
           if [ -z "${CODEX_AUTH_JSON:-}" ]; then
             echo "::warning::CODEX_ENABLED is true but the CODEX_AUTH_JSON secret is empty."
             exit 0
@@ -114,14 +130,18 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           FORCE: ${{ inputs.force }}
+          ENABLED: ${{ steps.due.outputs.enabled }}
         run: |
           set -uo pipefail
-          if grep -qiE '^[[:space:]]*CLAUDE_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env \
-             && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-            echo "::error::CLAUDE_ENABLED is true but the CLAUDE_CODE_OAUTH_TOKEN secret is missing."
-            echo "Create it on any machine with: claude setup-token"
-            exit 1
-          fi
+          case " $ENABLED " in
+            *" claude "*)
+              if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+                echo "::error::CLAUDE_ENABLED is true but the CLAUDE_CODE_OAUTH_TOKEN secret is missing."
+                echo "Create it on any machine with: claude setup-token"
+                exit 1
+              fi
+              ;;
+          esac
 
           args=(--config cloud.env)
           if [ "${FORCE:-false}" = "true" ]; then
@@ -158,13 +178,22 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add state/cloud-state.env
           git commit -m 'chore: record keepalive ping [skip ci]'
+
+          branch="${GITHUB_REF_NAME:-main}"
+
           # Another run may have landed while this one was pinging. Rebasing
-          # needs real history, so unshallow before the first retry.
+          # needs real history, so unshallow before the first retry. Both sides
+          # only ever move the timestamp forward, so on a conflict in this one
+          # file our freshly-pinged version is the one to keep.
           for attempt in 1 2 3; do
-            if git push; then exit 0; fi
-            echo "Push rejected (attempt $attempt) - rebasing onto origin."
-            git fetch --unshallow origin main 2>/dev/null || git fetch origin main
-            git pull --rebase --autostash origin main
+            if git push origin "HEAD:$branch"; then exit 0; fi
+            echo "Push rejected (attempt $attempt) - rebasing onto origin/$branch."
+            git fetch --unshallow origin "$branch" 2>/dev/null || git fetch origin "$branch"
+            if ! git rebase "origin/$branch"; then
+              git checkout --ours -- state/cloud-state.env || true
+              git add state/cloud-state.env
+              GIT_EDITOR=true git rebase --continue || git rebase --abort
+            fi
           done
           echo "::error::Could not push the updated state after 3 attempts."
           exit 1
