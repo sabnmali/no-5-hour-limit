@@ -1,0 +1,148 @@
+name: keepalive
+
+# Runs on GitHub's machines, so it keeps your 5-hour usage windows rolling
+# whether or not your own computer is on, awake, or online.
+#
+# Setup (once):
+#   1. Repository -> Settings -> Secrets and variables -> Actions -> New secret
+#        CLAUDE_CODE_OAUTH_TOKEN   the output of `claude setup-token`
+#        CODEX_AUTH_JSON           the contents of ~/.codex/auth.json  (optional)
+#   2. Edit cloud.env to choose the interval and which providers are enabled.
+#
+# GitHub's scheduler is best-effort: a run can be a few minutes to half an hour
+# late, so treat window boundaries as approximate.
+
+on:
+  schedule:
+    # Every 15 minutes. The job exits in seconds unless a ping is actually due,
+    # so this is cheap - and free on a public repository.
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Ping now, ignoring the interval'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: limitless-5-hour
+  cancel-in-progress: false
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Is a ping due?
+        id: due
+        env:
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -uo pipefail
+          if [ "${FORCE:-false}" = "true" ]; then
+            echo "Forced by workflow_dispatch."
+            echo "due=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if out="$(L5H_STATE_FILE=state/cloud-state.env bash bin/keepalive.sh --config cloud.env --due)"; then
+            echo "Due: $out"
+            echo "due=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out"
+            echo "due=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Node
+        if: steps.due.outputs.due == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install the CLIs that are enabled
+        if: steps.due.outputs.due == 'true'
+        run: |
+          set -euo pipefail
+          if grep -qiE '^[[:space:]]*CLAUDE_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env; then
+            npm install -g @anthropic-ai/claude-code
+          fi
+          if grep -qiE '^[[:space:]]*CODEX_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env; then
+            npm install -g @openai/codex
+          fi
+
+      - name: Restore Codex credentials
+        if: steps.due.outputs.due == 'true'
+        env:
+          CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+        run: |
+          set -euo pipefail
+          if ! grep -qiE '^[[:space:]]*CODEX_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env; then
+            echo "Codex disabled in cloud.env - skipping."
+            exit 0
+          fi
+          if [ -z "${CODEX_AUTH_JSON:-}" ]; then
+            echo "::warning::CODEX_ENABLED is true but the CODEX_AUTH_JSON secret is empty."
+            exit 0
+          fi
+          mkdir -p ~/.codex
+          printf '%s' "$CODEX_AUTH_JSON" > ~/.codex/auth.json
+          chmod 600 ~/.codex/auth.json
+
+      - name: Ping
+        if: steps.due.outputs.due == 'true'
+        id: ping
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -uo pipefail
+          if grep -qiE '^[[:space:]]*CLAUDE_ENABLED[[:space:]]*=[[:space:]]*(true|1|yes|on)' cloud.env \
+             && [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
+            echo "::error::CLAUDE_ENABLED is true but the CLAUDE_CODE_OAUTH_TOKEN secret is missing."
+            echo "Create it on any machine with: claude setup-token"
+            exit 1
+          fi
+
+          args=(--config cloud.env)
+          [ "${FORCE:-false}" = "true" ] && args+=(--force)
+
+          L5H_STATE_FILE=state/cloud-state.env bash bin/keepalive.sh "${args[@]}"
+          rc=$?
+
+          {
+            echo "### Limitless 5-Hour"
+            echo ''
+            echo '```'
+            L5H_STATE_FILE=state/cloud-state.env bash bin/keepalive.sh --config cloud.env --status
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit $rc
+
+      - name: Save the new state
+        # Runs even when the ping failed, so a partial success is not lost.
+        if: always() && steps.due.outputs.due == 'true'
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- state/cloud-state.env; then
+            echo "State unchanged - nothing to commit."
+            exit 0
+          fi
+          git config user.name  'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add state/cloud-state.env
+          git commit -m 'chore: record keepalive ping [skip ci]'
+          # Another run may have landed while this one was pinging.
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "Push rejected (attempt $attempt) - rebasing onto origin."
+            git pull --rebase --autostash
+          done
+          echo "::error::Could not push the updated state after 3 attempts."
+          exit 1

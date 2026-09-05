@@ -23,6 +23,10 @@ closes, so:
 - you always know exactly when the current one ends and the next one starts
 - you never accidentally waste a window on a two-second question
 
+It runs either on your own machine (Task Scheduler / cron / launchd) or
+entirely in the cloud on GitHub Actions, which keeps going while your computer
+is off, asleep, or offline. The cloud route is the one most people want.
+
 The ping runs on the **cheapest model** (Haiku by default) with the system
 prompt replaced by six words and every tool disabled, so it costs a rounding
 error's worth of quota.
@@ -95,6 +99,77 @@ powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
 powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Force
 # macOS / Linux
 ./bin/keepalive.sh --force
+```
+
+---
+
+## Run it in the cloud (recommended)
+
+Everything above needs your own computer to be awake. If you would rather it
+kept going while your machine is off, asleep, or offline, push this repository
+to GitHub and let GitHub Actions send the pings. The workflow in
+[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) is ready
+to go.
+
+**1. Create the credentials**
+
+On any machine, once:
+
+```bash
+claude setup-token     # prints a long-lived token - copy it
+```
+
+For Codex, copy the whole contents of `~/.codex/auth.json` (optional).
+
+**2. Push the repo and add the secrets**
+
+```bash
+gh repo create limitless-5-hour --public --source=. --remote=origin --push
+gh secret set CLAUDE_CODE_OAUTH_TOKEN
+gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json
+```
+
+Or on the website: **Settings -> Secrets and variables -> Actions -> New
+repository secret**.
+
+**3. Turn it on**
+
+Open the **Actions** tab, enable the `keepalive` workflow, then
+**Run workflow** with *Force* ticked to open the first window immediately.
+
+From then on it runs on GitHub's machines, forever, with your computer out of
+the picture entirely.
+
+### Managing it without a computer
+
+`cloud.env` is committed to the repo, so you can open it on github.com from
+your phone, change the interval or switch Codex on, and the next run picks it
+up. Every ping writes a summary showing when the current window ends, and
+`state/cloud-state.env` records the last ping time.
+
+### What to know before you rely on it
+
+- **Timing is approximate.** GitHub's scheduler is best-effort: runs are often
+  a few minutes late and occasionally half an hour. Windows still tile, the
+  boundaries just are not to the minute.
+- **Keep the repo public** for unlimited Actions minutes. On a private repo the
+  15-minute schedule would consume most of the 2000 free minutes - change the
+  cron to `0,30 * * * *` there.
+- **Scheduled workflows are disabled after 60 days without repository
+  activity.** Each ping commits the state file, which counts as activity.
+- **The token grants access to your subscription.** Only put it in a repository
+  you control. Secrets are not exposed to forks or pull requests.
+- **Codex refresh tokens rotate.** If Codex pings start failing, copy
+  `~/.codex/auth.json` into the secret again.
+
+### Cloud or local?
+
+Pick one. Running both means two independent schedules pinging the same
+account, which wastes a little quota without opening any extra windows. If you
+move to the cloud, remove the local task:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\uninstall-windows.ps1
 ```
 
 ---
@@ -207,6 +282,9 @@ claude -p "ok" --model haiku
 ## Files
 
 ```
+.github/workflows/        GitHub Actions: the device-independent scheduler
+cloud.env                  Cloud settings - committed, editable from the web
+state/cloud-state.env      Cloud last-ping timestamps (committed by the runner)
 bin/keepalive.ps1          Windows: the whole thing (ping, state, status)
 bin/keepalive.sh           macOS/Linux: same
 install/install-*.{ps1,sh} Register the scheduler + install the skill

@@ -1,6 +1,6 @@
 ---
 name: limitless-5-hour
-description: Inspect or control the Limitless 5-Hour keepalive - the background job that pings the Claude and Codex CLIs every ~5 hours so a fresh usage window is always open. Use when the user asks about their 5-hour limit/window, "kotam ne zaman yenilenir", "limitim ne durumda", "keepalive", "pencere ne zaman bitiyor", or wants to start/stop/check the keepalive, fire a ping now, or read its logs.
+description: Inspect or control the Limitless 5-Hour keepalive - the local or GitHub Actions job that pings the Claude and Codex CLIs every ~5 hours so a fresh usage window is always open. Use when the user asks about their 5-hour limit/window, "kotam ne zaman yenilenir", "limitim ne durumda", "keepalive", "pencere ne zaman bitiyor", or wants to start/stop/check the keepalive, fire a ping now, or read its logs.
 ---
 
 # Limitless 5-Hour
@@ -43,6 +43,28 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<REPO>\install\uninstall-wi
 "<REPO>/install/uninstall-unix.sh"
 ```
 
+## When it runs in the cloud
+
+If `<REPO>/.github/workflows/keepalive.yml` exists and the repo has a remote,
+the keepalive may be running on GitHub Actions instead of (or as well as) this
+machine. In that case the authoritative state is `state/cloud-state.env` in the
+repo, not `state/state.env`:
+
+```
+git -C "<REPO>" pull --quiet
+L5H_STATE_FILE=state/cloud-state.env bash "<REPO>/bin/keepalive.sh" --config "<REPO>/cloud.env" --status
+```
+
+To ping now from the cloud, or to check recent runs:
+
+```
+gh workflow run keepalive.yml -f force=true -R <owner>/<repo>
+gh run list --workflow keepalive.yml -L 5 -R <owner>/<repo>
+```
+
+Settings live in `cloud.env` (committed); editing and pushing it is what
+changes cloud behaviour. `config.env` only affects the local scheduler.
+
 ## Answering common questions
 
 | User asks | Do this |
@@ -52,7 +74,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<REPO>\install\uninstall-wi
 | "Start a window now" | Run with `--force` / `-Force`. Warn that this consumes the current window and starts a new 5-hour one immediately. |
 | "It isn't working" | Read the newest file in `<REPO>/logs/`. The most common cause is `not logged in` - the fix is `claude auth login` (or `codex login`). |
 | "Turn it off" | Run the uninstall script. It only removes the scheduler entry; config and logs stay. |
-| "Also keep ChatGPT/Codex alive" | Set `CODEX_ENABLED=true` in `<REPO>/config.env`. |
+| "Also keep ChatGPT/Codex alive" | Set `CODEX_ENABLED=true` in `<REPO>/config.env` (local) or `<REPO>/cloud.env` (cloud, then commit and push). |
+| "Does it work when my PC is off?" | Only if the GitHub Actions workflow is set up. Check `gh run list --workflow keepalive.yml`. |
 
 ## Editing settings
 

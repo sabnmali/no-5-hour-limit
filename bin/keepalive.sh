@@ -13,6 +13,10 @@
 #   ./bin/keepalive.sh --status     show last ping / window end / next ping
 #   ./bin/keepalive.sh --force      ping now, ignoring interval + quiet hours
 #   ./bin/keepalive.sh --dry-run    print the commands without running them
+#   ./bin/keepalive.sh --due        list providers needing a ping; exit 3 if none
+#   ./bin/keepalive.sh --config F   read settings from F instead of config.env
+#
+# Env overrides: L5H_CONFIG (config file), L5H_STATE_FILE (state file).
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
@@ -20,27 +24,31 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 LOG_DIR="$REPO_ROOT/logs"
 STATE_DIR="$REPO_ROOT/state"
-STATE_FILE="$STATE_DIR/state.env"
+# L5H_STATE_FILE / L5H_CONFIG let a caller (e.g. the GitHub Actions runner)
+# point at a different state file and config without touching the local ones.
+STATE_FILE="${L5H_STATE_FILE:-$STATE_DIR/state.env}"
 WORK_DIR="$STATE_DIR/workdir"
-CONFIG_PATH="$REPO_ROOT/config.env"
+CONFIG_PATH="${L5H_CONFIG:-$REPO_ROOT/config.env}"
 
 DO_STATUS=0
 DO_FORCE=0
 DO_DRYRUN=0
+DO_DUE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --status)   DO_STATUS=1 ;;
         --force)    DO_FORCE=1 ;;
         --dry-run)  DO_DRYRUN=1 ;;
+        --due)      DO_DUE=1 ;;
         --config)   shift; CONFIG_PATH="${1:-}" ;;
-        -h|--help)  sed -n '2,17p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help)  sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)          echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
 done
 
-mkdir -p "$LOG_DIR" "$STATE_DIR" "$WORK_DIR"
+mkdir -p "$LOG_DIR" "$STATE_DIR" "$WORK_DIR" "$(dirname "$STATE_FILE")"
 
 # ---------------------------------------------------------------------------
 # Config
@@ -335,6 +343,35 @@ show_status() {
 if [ "$DO_STATUS" -eq 1 ]; then
     show_status
     exit 0
+fi
+
+# --due: report which providers need a ping and say so through the exit code,
+# without contacting anything. Lets a caller skip expensive setup on a no-op
+# run (exit 0 = at least one is due, exit 3 = nothing to do).
+if [ "$DO_DUE" -eq 1 ]; then
+    DUE_LIST=""
+    NOW="$(date +%s)"
+    for provider in claude codex; do
+        if [ "$provider" = claude ]; then enabled="$CLAUDE_ENABLED"; last="$CLAUDE_LAST"
+        else enabled="$CODEX_ENABLED"; last="$CODEX_LAST"; fi
+        is_true "$enabled" || continue
+        if [ "$last" -gt 0 ] && [ $(( (NOW - last) / 60 )) -lt "$INTERVAL_MINUTES" ]; then
+            continue
+        fi
+        DUE_LIST="$DUE_LIST $provider"
+    done
+    if in_quiet_hours; then
+        printf 'quiet hours active (%s) - nothing due
+' "$QUIET_HOURS"
+        exit 3
+    fi
+    if [ -n "$DUE_LIST" ]; then
+        printf '%s
+' "${DUE_LIST# }"
+        exit 0
+    fi
+    echo 'nothing due'
+    exit 3
 fi
 
 prune_logs

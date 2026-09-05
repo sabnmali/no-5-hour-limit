@@ -26,6 +26,11 @@ kapandığı anda yenisini açıyor. Sonuç:
   biliyorsun
 - iki saniyelik bir soru yüzünden koca bir pencere yanmıyor
 
+İki şekilde çalışabilir: kendi bilgisayarında (Görev Zamanlayıcı / cron /
+launchd) ya da tamamen bulutta, GitHub Actions üzerinde. Bulut seçeneği,
+bilgisayarın kapalı, uykuda veya internetsiz olsa da çalışmaya devam eder —
+çoğu kişinin istediği bu.
+
 Mesaj **en ucuz modelde** (varsayılan: Haiku) gönderiliyor; sistem talimatı altı
 kelimeye indiriliyor ve bütün araçlar kapatılıyor. Yani kotandan pratikte
 ölçülemeyecek kadar az yiyor.
@@ -98,6 +103,77 @@ powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
 powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Force
 # macOS / Linux
 ./bin/keepalive.sh --force
+```
+
+---
+
+## Buluttan çalıştır (önerilen)
+
+Yukarıdaki her şey senin bilgisayarının açık olmasını gerektiriyor. Makinen
+kapalıyken, uykudayken veya internetsizken de çalışsın istiyorsan bu depoyu
+GitHub'a gönder ve gönderimleri GitHub Actions yapsın.
+[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) dosyası
+buna hazır.
+
+**1. Kimlik bilgilerini üret**
+
+Herhangi bir bilgisayarda, bir kez:
+
+```bash
+claude setup-token     # uzun ömürlü bir token yazdırır - kopyala
+```
+
+Codex için `~/.codex/auth.json` dosyasının tamamını kopyala (isteğe bağlı).
+
+**2. Depoyu gönder ve gizli anahtarları ekle**
+
+```bash
+gh repo create limitless-5-hour --public --source=. --remote=origin --push
+gh secret set CLAUDE_CODE_OAUTH_TOKEN
+gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json
+```
+
+Ya da site üzerinden: **Settings -> Secrets and variables -> Actions -> New
+repository secret**.
+
+**3. Çalıştır**
+
+**Actions** sekmesini aç, `keepalive` iş akışını etkinleştir, sonra
+**Run workflow** deyip *Force* kutusunu işaretle — ilk pencere hemen açılır.
+
+Bundan sonrası GitHub'ın makinelerinde dönüyor; senin bilgisayarının hiçbir
+rolü kalmıyor.
+
+### Bilgisayar olmadan yönetmek
+
+`cloud.env` depoda duruyor. Telefonundan github.com'a girip aralığı
+değiştirebilir veya Codex'i açabilirsin; bir sonraki tur yeni ayarı kullanır.
+Her gönderim, pencerenin ne zaman biteceğini gösteren bir özet yazıyor;
+`state/cloud-state.env` de son gönderim zamanını tutuyor.
+
+### Güvenmeden önce bilmen gerekenler
+
+- **Zamanlama yaklaşıktır.** GitHub'ın zamanlayıcısı "elinden geleni yapar":
+  turlar çoğu zaman birkaç dakika, bazen yarım saat gecikir. Pencereler yine uç
+  uca dizilir, sadece sınırlar dakikası dakikasına olmaz.
+- **Depoyu public tut** — Actions dakikaları sınırsız olur. Private depoda
+  15 dakikalık tur, ücretsiz 2000 dakikanın çoğunu yer; orada cron'u
+  `0,30 * * * *` yap.
+- **60 gün hiç hareket olmayan depolarda zamanlanmış iş akışları kapatılır.**
+  Her gönderim durum dosyasını commit ettiği için bu hareket sayılıyor.
+- **Token, aboneliğine erişim verir.** Sadece senin kontrolündeki bir depoya
+  koy. Gizli anahtarlar fork'lara ve pull request'lere aktarılmaz.
+- **Codex'in yenileme token'ları döner.** Codex gönderimleri bir gün hata
+  vermeye başlarsa `~/.codex/auth.json` dosyasını anahtara yeniden kopyala.
+
+### Bulut mu, yerel mi?
+
+Birini seç. İkisini birden çalıştırmak, aynı hesaba iki ayrı zamanlamanın
+gönderim yapması demek — fazladan pencere açmadan biraz kota harcar. Buluta
+geçtiysen yerel görevi kaldır:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\uninstall-windows.ps1
 ```
 
 ---
@@ -209,6 +285,9 @@ claude -p "ok" --model haiku
 ## Dosyalar
 
 ```
+.github/workflows/        GitHub Actions: cihazdan bağımsız zamanlayıcı
+cloud.env                  Bulut ayarları - depoda durur, web'den düzenlenir
+state/cloud-state.env      Bulut son gönderim zamanları (runner commit eder)
 bin/keepalive.ps1          Windows: her şey burada (gönderim, durum, kayıt)
 bin/keepalive.sh           macOS/Linux: aynısı
 install/install-*.{ps1,sh} Zamanlayıcıyı ve beceriyi kurar
