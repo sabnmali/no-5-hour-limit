@@ -40,6 +40,15 @@ yourself.
 
 ---
 
+## Installing it with an AI assistant
+
+Point Codex, Claude Code, or any similar agent at this repository and ask it to
+set it up. [AGENTS.md](AGENTS.md) tells it which route to choose, what to run,
+what the pitfalls are, and - importantly - that it must never touch your login
+token itself.
+
+---
+
 ## Requirements
 
 | | |
@@ -111,34 +120,43 @@ to GitHub and let GitHub Actions send the pings. The workflow in
 [`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) is ready
 to go.
 
-**1. Create the credentials**
-
-On any machine, once:
-
-```bash
-claude setup-token     # prints a long-lived token - copy it
-```
-
-For Codex, copy the whole contents of `~/.codex/auth.json` (optional).
-
-**2. Push the repo and add the secrets**
+**1. Put the repo on GitHub**
 
 ```bash
 gh repo create no-5-hour-limit --public --source=. --remote=origin --push
-gh secret set CLAUDE_CODE_OAUTH_TOKEN
-gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json
+```
+
+**2. Run the setup script**
+
+```bash
+# Windows
+powershell -ExecutionPolicy Bypass -File install\setup-cloud-windows.ps1
+# macOS / Linux
+./install/setup-cloud.sh          # add --codex to include Codex
+```
+
+Run it in a real terminal - it opens your browser so you can sign in. It then
+creates the login token, stores it as a repository secret, opens your first
+window and waits to confirm that it worked. The token is never written to disk
+and never printed back.
+
+That is the whole setup. From then on it runs on GitHub's machines, forever,
+with your computer out of the picture entirely.
+
+<details>
+<summary>Doing it by hand instead</summary>
+
+```bash
+claude setup-token                                    # copy what it prints
+gh secret set CLAUDE_CODE_OAUTH_TOKEN                 # paste it
+gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json    # optional
+gh workflow run keepalive.yml -f force=true
 ```
 
 Or on the website: **Settings -> Secrets and variables -> Actions -> New
-repository secret**.
+repository secret**, then **Actions -> keepalive -> Run workflow**.
 
-**3. Turn it on**
-
-Open the **Actions** tab, enable the `keepalive` workflow, then
-**Run workflow** with *Force* ticked to open the first window immediately.
-
-From then on it runs on GitHub's machines, forever, with your computer out of
-the picture entirely.
+</details>
 
 ### Managing it without a computer
 
@@ -294,6 +312,8 @@ state/cloud-state.env      Cloud last-ping timestamps (committed by the runner)
 bin/keepalive.ps1          Windows: the whole thing (ping, state, status)
 bin/keepalive.sh           macOS/Linux: same
 install/install-*.{ps1,sh} Register the scheduler + install the skill
+AGENTS.md                  Instructions for an AI agent asked to install this
+install/setup-cloud*       One-command cloud setup (token -> secret -> verify)
 install/setup-cli-windows.ps1  Windows: native CLI install + login + re-register
 install/uninstall-*        Remove the scheduler (keeps config and logs)
 skill/no-5-hour-limit/    Claude Code skill: ask about your window in chat

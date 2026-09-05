@@ -43,6 +43,15 @@ Kendi aboneliğini, resmî CLI üzerinden, sanki `ok` yazmışsın gibi kullanı
 
 ---
 
+## Bir AI'a kurdurmak
+
+Codex'e, Claude Code'a ya da benzeri bir asistana bu deponun linkini verip
+"kur" demen yeterli. [AGENTS.md](AGENTS.md) dosyası ona hangi yolu seçeceğini,
+ne çalıştıracağını, nerede tuzak olduğunu ve — en önemlisi — giriş anahtarına
+kendisinin asla dokunmaması gerektiğini anlatıyor.
+
+---
+
 ## Gerekenler
 
 | | |
@@ -115,34 +124,43 @@ GitHub'a gönder ve gönderimleri GitHub Actions yapsın.
 [`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) dosyası
 buna hazır.
 
-**1. Kimlik bilgilerini üret**
-
-Herhangi bir bilgisayarda, bir kez:
-
-```bash
-claude setup-token     # uzun ömürlü bir token yazdırır - kopyala
-```
-
-Codex için `~/.codex/auth.json` dosyasının tamamını kopyala (isteğe bağlı).
-
-**2. Depoyu gönder ve gizli anahtarları ekle**
+**1. Depoyu GitHub'a koy**
 
 ```bash
 gh repo create no-5-hour-limit --public --source=. --remote=origin --push
-gh secret set CLAUDE_CODE_OAUTH_TOKEN
-gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json
+```
+
+**2. Kurulum scriptini çalıştır**
+
+```bash
+# Windows
+powershell -ExecutionPolicy Bypass -File install\setup-cloud-windows.ps1
+# macOS / Linux
+./install/setup-cloud.sh          # Codex de istiyorsan --codex ekle
+```
+
+Gerçek bir terminalde çalıştır — giriş yapman için tarayıcıyı açıyor. Sonra
+giriş anahtarını üretiyor, depo gizli anahtarı olarak saklıyor, ilk pencereni
+açıyor ve çalıştığını doğrulayana kadar bekliyor. Anahtar diske yazılmıyor ve
+ekrana geri basılmıyor.
+
+Kurulumun tamamı bu. Bundan sonrası GitHub'ın makinelerinde dönüyor; senin
+bilgisayarının hiçbir rolü kalmıyor.
+
+<details>
+<summary>Elle yapmak istersen</summary>
+
+```bash
+claude setup-token                                    # yazdırdığını kopyala
+gh secret set CLAUDE_CODE_OAUTH_TOKEN                 # yapıştır
+gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json    # isteğe bağlı
+gh workflow run keepalive.yml -f force=true
 ```
 
 Ya da site üzerinden: **Settings -> Secrets and variables -> Actions -> New
-repository secret**.
+repository secret**, sonra **Actions -> keepalive -> Run workflow**.
 
-**3. Çalıştır**
-
-**Actions** sekmesini aç, `keepalive` iş akışını etkinleştir, sonra
-**Run workflow** deyip *Force* kutusunu işaretle — ilk pencere hemen açılır.
-
-Bundan sonrası GitHub'ın makinelerinde dönüyor; senin bilgisayarının hiçbir
-rolü kalmıyor.
+</details>
 
 ### Bilgisayar olmadan yönetmek
 
@@ -296,6 +314,8 @@ state/cloud-state.env      Bulut son gönderim zamanları (runner commit eder)
 bin/keepalive.ps1          Windows: her şey burada (gönderim, durum, kayıt)
 bin/keepalive.sh           macOS/Linux: aynısı
 install/install-*.{ps1,sh} Zamanlayıcıyı ve beceriyi kurar
+AGENTS.md                  Bu repoyu kurması istenen bir AI için talimatlar
+install/setup-cloud*       Tek komutluk bulut kurulumu (token -> secret -> test)
 install/setup-cli-windows.ps1  Windows: yerel CLI kurulumu + giriş + yeniden kayıt
 install/uninstall-*        Zamanlayıcıyı kaldırır (ayar ve kayıtlar kalır)
 skill/no-5-hour-limit/    Claude Code becerisi: sohbette limitini sorabilirsin
