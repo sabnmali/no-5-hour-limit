@@ -348,11 +348,17 @@ The CLI keeps its own credentials, separate from the Claude desktop app. Run
 
 **The background task does nothing, but running it by hand works**
 
-The Task Scheduler service launches processes with a different environment -
-and on some Windows machines a different view of `%APPDATA%` - than your
-interactive shell. A `claude` installed through npm lives in `%APPDATA%\npm`,
-which the scheduler may not be able to see, so the log fills with
-`claude CLI not found`.
+First check that the CLI is installed at all - run `claude --version` in your
+own terminal. Installing the Claude **desktop app** does not give you the
+`claude` **command**: the app carries its own private copy that other
+programs cannot call. The CLI is a separate install:
+
+```
+npm install -g @anthropic-ai/claude-code
+```
+
+If the command works in your terminal but the background job still reports
+`claude CLI not found`, then the scheduler is running with a different PATH.
 
 The installer detects this and tells you. The fix is to switch to the native
 build, which installs under your user folder where the scheduler can reach it:

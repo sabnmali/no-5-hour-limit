@@ -7,10 +7,10 @@
     Run this in a NORMAL PowerShell window (Start menu -> "PowerShell"), not
     from inside another tool, because the login step opens your browser.
 
-    Why it exists: npm's global folder (%APPDATA%\npm) is not always visible to
-    the Task Scheduler service, so a keepalive that works when you run it by
-    hand can silently fail in the background. The native Claude Code build
-    installs under your user folder instead, which the scheduler can see.
+    Why it exists: a scheduled task runs with a different PATH than your
+    terminal, so a keepalive that works when you run it by hand can silently
+    fail in the background. The native Claude Code build installs under your
+    user folder, which is the most reliable place for a scheduler to find it.
 
 .PARAMETER SkipInstall
     Don't install the native build; only log in and re-run the installer.

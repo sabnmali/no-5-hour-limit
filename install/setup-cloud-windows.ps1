@@ -63,11 +63,57 @@ if ($LASTEXITCODE -ne 0) {
 }
 Ok 'GitHub CLI ready'
 
-$claude = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-if (-not $claude) {
-    Die 'The claude command was not found. Install it with:  npm install -g @anthropic-ai/claude-code'
+function Find-Claude {
+    $c = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($c) { return $c.Source }
+    foreach ($p in @(
+        (Join-Path $env:APPDATA      'npm\claude.cmd'),
+        (Join-Path $env:USERPROFILE  '.local\bin\claude.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Programs\claude\claude.exe')
+    )) { if ($p -and (Test-Path -LiteralPath $p)) { return $p } }
+    return $null
 }
-Ok "claude command found"
+
+$claudePath = Find-Claude
+
+if (-not $claudePath) {
+    # Having the Claude desktop app does not put `claude` on your PATH - the app
+    # carries its own private copy. The command-line tool is a separate install.
+    Warn 'The claude command-line tool is not installed on this computer yet.'
+    Say  '(The Claude desktop app has its own private copy that other programs cannot use.)'
+    Say  ''
+
+    $npm = Get-Command npm -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if (-not $npm) {
+        Die 'Installing it needs Node.js. Get it from https://nodejs.org then run this script again.'
+    }
+
+    $answer = Read-Host '  Install it now? (press Enter for yes, or type n)'
+    if ($answer -match '^(?i:n|no|h|hayir)') {
+        Die 'Nothing installed. Run this again when you are ready.'
+    }
+
+    Say 'Installing - this takes a minute...'
+    & $npm.Source install -g '@anthropic-ai/claude-code'
+    if ($LASTEXITCODE -ne 0) {
+        Die 'The install failed. Try running this by hand:  npm install -g @anthropic-ai/claude-code'
+    }
+
+    # npm creates its global folder on first use, so this shell may not have
+    # picked it up yet. Re-read PATH from the registry before looking again.
+    $env:PATH = [Environment]::GetEnvironmentVariable('PATH', 'User') + ';' +
+                [Environment]::GetEnvironmentVariable('PATH', 'Machine')
+
+    $claudePath = Find-Claude
+    if (-not $claudePath) {
+        Die 'Installed, but the claude command still is not visible. Close this window, open a new PowerShell, and run this script again.'
+    }
+    Ok "claude installed: $claudePath"
+} else {
+    Ok "claude command found: $claudePath"
+}
+
+$claude = [pscustomobject]@{ Source = $claudePath }
 
 # --------------------------------------------------------------------------
 # 1. Which repository

@@ -115,9 +115,13 @@ and starts a new one.
 
 ## Things that will bite you
 
+- **The Claude desktop app does not give the user the `claude` command.** The
+  app ships its own private copy that other programs cannot call. The CLI is a
+  separate `npm install -g @anthropic-ai/claude-code`. Check with
+  `Get-Command claude` / `command -v claude` in the user's own terminal - a
+  tool sandbox can see a copy that the machine itself does not have.
 - **Schedulers do not inherit your shell's PATH.** That is what `CLAUDE_BIN` /
-  `CODEX_BIN` are for; the installers fill them in. On at least one Windows
-  machine the Task Scheduler service could not see `%APPDATA%\npm` at all.
+  `CODEX_BIN` are for; the installers fill them in.
 - **The CLI's login is separate from the Claude desktop app.** `claude auth
   status` reporting `loggedIn: false` while the desktop app works is normal.
 - **Codex refresh tokens rotate.** A `CODEX_AUTH_JSON` secret can go stale;

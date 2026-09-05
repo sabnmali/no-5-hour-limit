@@ -351,10 +351,17 @@ CLI'ın kimlik bilgileri masaüstü uygulamasından ayrı. Terminalde bir kez
 
 **Arka plan görevi hiçbir şey yapmıyor ama elle çalıştırınca çalışıyor**
 
-Görev Zamanlayıcı servisi, programları senin terminalinden farklı bir ortamla
-başlatır - bazı Windows makinelerinde `%APPDATA%` görünümü bile farklıdır.
-npm ile kurulan `claude`, `%APPDATA%\npm` içinde durur ve zamanlayıcı orayı
-göremeyebilir; kayıtlar `claude CLI not found` ile dolar.
+Önce komutun gerçekten kurulu olduğundan emin ol — kendi terminalinde
+`claude --version` çalıştır. Claude **masaüstü uygulamasını** kurmuş olman
+sana `claude` **komutunu** vermez: uygulama kendi özel kopyasını taşır ve
+başka programlar onu çağıramaz. Komut satırı aracı ayrı bir kurulumdur:
+
+```
+npm install -g @anthropic-ai/claude-code
+```
+
+Komut terminalinde çalışıyor ama arka plan görevi hâlâ `claude CLI not found`
+diyorsa, zamanlayıcı farklı bir PATH ile çalışıyordur.
 
 Kurulum bunu kendisi tespit edip söylüyor. Çözüm, kullanıcı klasörüne kurulan
 ve zamanlayıcının erişebildiği yerel (native) sürüme geçmek:

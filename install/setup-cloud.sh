@@ -56,9 +56,32 @@ if ! gh auth status >/dev/null 2>&1; then
 fi
 ok "GitHub CLI ready"
 
-command -v claude >/dev/null 2>&1 || \
-    die "The claude command was not found. Install it with:  npm install -g @anthropic-ai/claude-code"
-ok "claude command found"
+if ! command -v claude >/dev/null 2>&1; then
+    # Having the Claude desktop app does not put `claude` on your PATH - the app
+    # carries its own private copy. The command-line tool is a separate install.
+    warn "The claude command-line tool is not installed on this computer yet."
+    say  "(The Claude desktop app has its own private copy that other programs cannot use.)"
+    echo
+    command -v npm >/dev/null 2>&1 || \
+        die "Installing it needs Node.js. Get it from https://nodejs.org then run this script again."
+
+    printf '  Install it now? (press Enter for yes, or type n): '
+    IFS= read -r answer
+    case "$answer" in
+        [nNhH]*) die "Nothing installed. Run this again when you are ready." ;;
+    esac
+
+    say "Installing - this takes a minute..."
+    npm install -g @anthropic-ai/claude-code \
+        || die "The install failed. Try running this by hand:  npm install -g @anthropic-ai/claude-code"
+
+    hash -r 2>/dev/null || true
+    command -v claude >/dev/null 2>&1 || \
+        die "Installed, but the claude command still is not visible. Open a new terminal and run this script again."
+    ok "claude installed: $(command -v claude)"
+else
+    ok "claude command found: $(command -v claude)"
+fi
 
 # --- 2. which repository ---------------------------------------------------
 if [ -z "$REPO" ]; then
