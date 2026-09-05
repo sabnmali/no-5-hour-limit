@@ -115,6 +115,6 @@ if ($native) {
 & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-windows.ps1')
 
 Write-Host ''
-Write-Host '  Done. Start your first window with:' -ForegroundColor Green
-Write-Host ('        powershell -ExecutionPolicy Bypass -File "{0}" -Force' -f (Join-Path $RepoRoot 'bin\keepalive.ps1'))
+Write-Host '  Installer finished. Check status before sending another ping:' -ForegroundColor Green
+Write-Host ('        powershell -ExecutionPolicy Bypass -File "{0}" -Status' -f (Join-Path $RepoRoot 'bin\keepalive.ps1'))
 Write-Host ''

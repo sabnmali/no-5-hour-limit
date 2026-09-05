@@ -101,16 +101,22 @@ head_ "Step 2 of 5 - creating your login token"
 say "A browser window will open. Sign in and approve, then come back here."
 echo
 
-claude setup-token
+claude setup-token || die "Token setup failed."
 
 echo
 say "Copy the long token printed above,"
 printf '  paste it here and press Enter (it will not be shown): '
 # Echo off: the CLI already put the token on screen once. Repeating it in the
 # scrollback of a terminal that may be recorded is a needless second exposure.
-stty -echo 2>/dev/null
-IFS= read -r TOKEN
-stty echo 2>/dev/null
+[ -t 0 ] || die "Run this interactively in your own terminal."
+terminal_state="$(stty -g)" || die "Cannot read terminal state."
+trap 'stty "$terminal_state" 2>/dev/null' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+stty -echo || die "Cannot hide token input."
+IFS= read -r TOKEN || die "No token received."
+stty "$terminal_state"
+trap - EXIT INT TERM
 echo
 TOKEN="$(printf '%s' "$TOKEN" | tr -d '[:space:]')"
 
@@ -148,7 +154,7 @@ head_ "Step 4 of 5 - opening your first window"
 
 # Remember what already exists, so a run left over from cron is never mistaken
 # for the one this script is about to start.
-BEFORE="$(gh run list --workflow keepalive.yml --limit 20 --json databaseId \
+BEFORE="$(gh run list --workflow keepalive.yml --event workflow_dispatch --limit 20 --json databaseId \
           --jq '[.[].databaseId] | join(",")' --repo "$REPO" 2>/dev/null || true)"
 
 gh workflow run keepalive.yml -f force=true --repo "$REPO" \
@@ -167,7 +173,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     # that fixed id. Watching "the latest run" could report success from a run
     # that finished before this script even started.
     if [ -z "$run_id" ]; then
-        for candidate in $(gh run list --workflow keepalive.yml --limit 20 \
+        for candidate in $(gh run list --workflow keepalive.yml --event workflow_dispatch --limit 20 \
                            --json databaseId --jq '.[].databaseId' --repo "$REPO" 2>/dev/null); do
             case ",$BEFORE," in
                 *",$candidate,"*) ;;
@@ -186,7 +192,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
     if [ "$status" = "completed" ]; then
         echo
         if [ "$conclusion" = "success" ]; then
-            ok "It works. A fresh 5-hour window is open and it will keep renewing itself."
+            ok "Workflow completed. Check its Ping step for actual provider success; reset times are estimates."
             echo
             say "Details: https://github.com/$REPO/actions/runs/$run_id"
             echo
@@ -203,5 +209,7 @@ while [ "$(date +%s)" -lt "$deadline" ]; do
 done
 
 echo
-warn "Still running after 3 minutes. It is probably fine - check here in a moment:"
+warn "Verification timed out after 3 minutes; outcome unknown. Check:"
 say  "https://github.com/$REPO/actions"
+
+exit 1

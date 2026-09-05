@@ -1,5 +1,12 @@
 # Local configuration (your own model / prompt / interval choices)
 config.env
+.ai-sync-backups/
+__pycache__/
+*.pyc
+auth.json
+.env
+*.pem
+*.key
 
 # Runtime output - keep the folders, ignore their contents
 logs/*

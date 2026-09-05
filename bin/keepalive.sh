@@ -3,8 +3,8 @@
 # No 5-Hour Limit - keeps AI CLI usage windows rolling (macOS / Linux).
 #
 # Sends a minimal "ping" prompt to the Claude CLI and/or the Codex CLI once the
-# configured interval has elapsed since the last successful ping. That opens a
-# fresh 5-hour usage window, so window boundaries stay predictable.
+# configured interval has elapsed since the last successful ping. This may
+# start an idle usage window; it does not report actual provider reset times.
 #
 # The script is idempotent: it only pings when the interval has actually
 # elapsed, so cron just needs to poke it every few minutes.
@@ -20,9 +20,11 @@
 # Env overrides: L5H_CONFIG (config file), L5H_STATE_FILE (state file).
 # ---------------------------------------------------------------------------
 set -uo pipefail
+umask 077
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
+source "$SCRIPT_DIR/run-cli.sh"
 LOG_DIR="$REPO_ROOT/logs"
 STATE_DIR="$REPO_ROOT/state"
 # L5H_STATE_FILE / L5H_CONFIG let a caller (e.g. the GitHub Actions runner)
@@ -45,7 +47,7 @@ while [ $# -gt 0 ]; do
         --dry-run)  DO_DRYRUN=1 ;;
         --due)      DO_DUE=1 ;;
         --enabled)  DO_ENABLED=1 ;;
-        --config)   shift; CONFIG_PATH="${1:-}"; CONFIG_REQUIRED=1 ;;
+        --config)   [ $# -ge 2 ] || { echo '--config requires a path' >&2; exit 2; }; shift; CONFIG_PATH="$1"; CONFIG_REQUIRED=1 ;;
         -h|--help)  sed -n '2,22p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *)          echo "unknown option: $1" >&2; exit 2 ;;
     esac
@@ -66,7 +68,7 @@ CODEX_ENABLED=false
 CODEX_MODEL=
 CODEX_PROMPT=ok
 CODEX_BIN=
-CODEX_REASONING_EFFORT=minimal
+CODEX_REASONING_EFFORT=low
 LOG_RETENTION_DAYS=30
 QUIET_HOURS=
 
@@ -82,6 +84,7 @@ load_kv_file() {
     [ -f "$file" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
         line="${line%$'\r'}"
+        line="${line#$'\xef\xbb\xbf'}"
         case "$line" in ''|'#'*) continue ;; esac
         case "$line" in *=*) ;; *) continue ;; esac
         key="${line%%=*}"
@@ -119,10 +122,9 @@ to_int() {
 }
 
 INTERVAL_MINUTES="$(to_int "$INTERVAL_MINUTES")" || INTERVAL_MINUTES=301
-# Floor: a window lasts 300 minutes, so anything under that pings inside a live
-# window and buys nothing. 60 is a hard stop against a typo turning this into a
-# quota-burning loop.
-[ "$INTERVAL_MINUTES" -ge 60 ] || INTERVAL_MINUTES=60
+# Keep interval arithmetic bounded and prevent sub-window polling.
+[ "$INTERVAL_MINUTES" -ge 300 ] || INTERVAL_MINUTES=300
+[ "$INTERVAL_MINUTES" -le 525600 ] || INTERVAL_MINUTES=525600
 
 is_true() {
     case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
@@ -136,10 +138,12 @@ is_true() {
 # ---------------------------------------------------------------------------
 LOG_FILE="$LOG_DIR/keepalive-$(date +%Y-%m).log"
 
+redact() { sed -E 's/[A-Za-z0-9_-]{24,}/[redacted]/g'; }
+
 log() {
     local level="$1"; shift
     local line
-    line="$(printf '[%s] %-5s %s' "$(date '+%Y-%m-%d %H:%M:%S %z')" "$(printf '%s' "$level" | tr '[:lower:]' '[:upper:]')" "$*")"
+    line="$(printf '[%s] %-5s %s' "$(date '+%Y-%m-%d %H:%M:%S %z')" "$(printf '%s' "$level" | tr '[:lower:]' '[:upper:]')" "$(printf '%s' "$*" | redact)")"
     printf '%s\n' "$line" >> "$LOG_FILE"
     printf '%s\n' "$line"
 }
@@ -165,6 +169,7 @@ save_state() {
     # so an interrupted run cannot leave a half-written state behind. A failure
     # here has to be loud: a lost timestamp means the next run pings again.
     local tmp="$STATE_FILE.tmp.$$"
+    [ ! -d "$STATE_FILE" ] || { log error 'state path is a directory'; return 1; }
     {
         echo "# No 5-Hour Limit state - epoch seconds of the last successful ping"
         echo "CLAUDE_LAST=$CLAUDE_LAST"
@@ -181,16 +186,23 @@ LOCK_DIR="$STATE_DIR/.lock"
 acquire_lock() {
     local tries=0
     while ! mkdir "$LOCK_DIR" 2>/dev/null; do
-        # Reclaim a lock left behind by a killed run.
-        if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +15 2>/dev/null)" ]; then
+        # Only reclaim a dead owner. Age alone can evict a still-running CLI.
+        local owner=''
+        [ ! -f "$LOCK_DIR/pid" ] || read -r owner < "$LOCK_DIR/pid"
+        if [[ "$owner" =~ ^[0-9]+$ ]] && ! kill -0 "$owner" 2>/dev/null; then
+            rm -f "$LOCK_DIR/pid"
             rmdir "$LOCK_DIR" 2>/dev/null || true
-            continue
+        elif [ -z "$owner" ] && [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +15 2>/dev/null)" ]; then
+            rmdir "$LOCK_DIR" 2>/dev/null || true
         fi
         tries=$((tries + 1))
         [ "$tries" -ge 3 ] && return 1
         sleep 2
     done
-    trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+    echo "$$" > "$LOCK_DIR/pid"
+    trap 'rm -f "$LOCK_DIR/pid"; rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
     return 0
 }
 
@@ -232,7 +244,7 @@ PING_MESSAGE=''
 # Cloud runs publish their logs publicly, so raw CLI output must never be
 # echoed verbatim. GitHub masks the secret it injected; this also catches
 # anything else token-shaped, such as a value quoted back in an error.
-redact() { sed -E 's/[A-Za-z0-9_-]{24,}/[redacted]/g'; }
+
 
 # resolve_cli <name> -> echoes an absolute path, or nothing.
 # Schedulers (cron, launchd) run with a stripped-down PATH, so an explicit path
@@ -262,6 +274,11 @@ resolve_cli() {
 
 ping_claude() {
     PING_MESSAGE=''
+    if [ -n "${ANTHROPIC_API_KEY:-}${ANTHROPIC_AUTH_TOKEN:-}" ] ||
+       [ "${CLAUDE_CODE_USE_BEDROCK:-0}" = 1 ] || [ "${CLAUDE_CODE_USE_VERTEX:-0}" = 1 ] || [ "${CLAUDE_CODE_USE_FOUNDRY:-0}" = 1 ]; then
+        PING_MESSAGE='API/provider credentials detected; use subscription login in a clean environment'
+        return 1
+    fi
     local exe
     if ! exe="$(resolve_cli claude)"; then
         PING_MESSAGE='claude CLI not found (set CLAUDE_BIN in config.env, or npm i -g @anthropic-ai/claude-code)'
@@ -272,7 +289,7 @@ ping_claude() {
         -p "$CLAUDE_PROMPT"
         --model "$CLAUDE_MODEL"
         --system-prompt 'Reply with exactly: ok'
-        --restricted
+        --restricted --safe-mode --tools=
         --strict-mcp-config
         --no-session-persistence
         --permission-mode dontAsk
@@ -285,12 +302,12 @@ ping_claude() {
     fi
 
     local out rc
-    out="$(cd "$WORK_DIR" && "$exe" "${args[@]}" 2>&1)"; rc=$?
+    out="$(cd "$WORK_DIR" && run_bounded_cli "$exe" "${args[@]}" 2>&1)"; rc=$?
 
     # Matching on text alone is not enough: an unrecognised failure would be
     # recorded as a successful ping and stall the schedule for five hours.
     if [ "$rc" -ne 0 ]; then
-        PING_MESSAGE="claude exited $rc: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-200)"
+        PING_MESSAGE="claude exited $rc (CLI output withheld)"
         return 1
     fi
 
@@ -299,11 +316,16 @@ ping_claude() {
         return 1
     fi
     if printf '%s' "$out" | grep -q '"is_error"[[:space:]]*:[[:space:]]*true'; then
-        PING_MESSAGE="claude error: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-300)"
+        PING_MESSAGE='claude returned an error (CLI output withheld)'
         return 1
     fi
     if ! printf '%s' "$out" | grep -q '"type"[[:space:]]*:[[:space:]]*"result"'; then
-        PING_MESSAGE="unreadable claude output: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-300)"
+        PING_MESSAGE='unreadable claude output (CLI output withheld)'
+        return 1
+    fi
+    if ! printf '%s' "$out" | grep -q '"subtype"[[:space:]]*:[[:space:]]*"success"' ||
+       ! printf '%s' "$out" | grep -q '"is_error"[[:space:]]*:[[:space:]]*false'; then
+        PING_MESSAGE='claude did not return a successful result (CLI output withheld)'
         return 1
     fi
 
@@ -319,10 +341,10 @@ ping_codex() {
         return 1
     fi
 
-    local args=(exec --skip-git-repo-check --ephemeral -s read-only -C "$WORK_DIR")
+    local args=(exec --skip-git-repo-check --ephemeral --ignore-user-config --ignore-rules --json -s read-only -c project_doc_max_bytes=0 -c 'forced_login_method="chatgpt"' -C "$WORK_DIR")
     [ -n "$CODEX_MODEL" ] && args+=(-m "$CODEX_MODEL")
     [ -n "$CODEX_REASONING_EFFORT" ] && args+=(-c "model_reasoning_effort=\"$CODEX_REASONING_EFFORT\"")
-    args+=("$CODEX_PROMPT")
+    args+=(-- "$CODEX_PROMPT")
 
     if [ "$DO_DRYRUN" -eq 1 ]; then
         PING_MESSAGE="DRY RUN: codex ${args[*]}"
@@ -330,10 +352,10 @@ ping_codex() {
     fi
 
     local out rc
-    out="$("$exe" "${args[@]}" 2>&1)"; rc=$?
+    out="$(run_bounded_cli "$exe" "${args[@]}" 2>&1)"; rc=$?
 
     if [ "$rc" -ne 0 ]; then
-        PING_MESSAGE="codex exited $rc: $(printf '%s' "$out" | redact | tr '\n' ' ' | cut -c1-200)"
+        PING_MESSAGE="codex exited $rc (CLI output withheld)"
         return 1
     fi
 
@@ -346,10 +368,15 @@ ping_codex() {
         return 1
     fi
     if printf '%s' "$out" | grep -qi '^ERROR:'; then
-        PING_MESSAGE="error: $(printf '%s' "$out" | grep -i '^ERROR:' | head -1 | redact | cut -c1-200)"
+        PING_MESSAGE='codex reported an error (CLI output withheld)'
         return 1
     fi
 
+    if printf '%s' "$out" | grep -qE '"type"[[:space:]]*:[[:space:]]*"(turn.failed|error)"' ||
+       ! printf '%s' "$out" | grep -qE '"type"[[:space:]]*:[[:space:]]*"turn.completed"'; then
+        PING_MESSAGE='codex returned no successful completed turn (CLI output withheld)'
+        return 1
+    fi
     PING_MESSAGE='codex ok'
     return 0
 }
@@ -396,9 +423,9 @@ show_status() {
         printf '  %-6s       : enabled\n' "$name"
         printf '     last ping   %s\n' "$(fmt_time "$last")"
         if [ "$remain" -gt 0 ]; then
-            printf '     window ends %s  (%dh %dm left)\n' "$(fmt_time "$ends")" "$((remain / 3600))" "$(((remain % 3600) / 60))"
+            printf '     estimated window end %s  (%dh %dm left; not provider-reported)\n' "$(fmt_time "$ends")" "$((remain / 3600))" "$(((remain % 3600) / 60))"
         else
-            printf '     window ends %s  (expired)\n' "$(fmt_time "$ends")"
+            printf '     estimated window end %s  (expired; not provider-reported)\n' "$(fmt_time "$ends")"
         fi
         printf '     next ping   %s\n' "$(fmt_time "$nextp")"
     done
@@ -486,6 +513,11 @@ acquire_lock || {
     log warn "another run is already working - skipping this one"
     exit 0
 }
+
+# Reload after taking the lock: another run may have finished while we waited.
+load_kv_file "$STATE_FILE" "$STATE_KEYS"
+CLAUDE_LAST="$(to_int "$CLAUDE_LAST")" || CLAUDE_LAST=0
+CODEX_LAST="$(to_int "$CODEX_LAST")" || CODEX_LAST=0
 
 ANY_FAIL=0
 

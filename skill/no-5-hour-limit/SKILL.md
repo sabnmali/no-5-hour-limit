@@ -1,14 +1,14 @@
 ---
 name: no-5-hour-limit
-description: Inspect or control the No 5-Hour Limit keepalive - the local or GitHub Actions job that pings the Claude and Codex CLIs every ~5 hours so a fresh usage window is always open. Use when the user asks about their 5-hour limit/window, "kotam ne zaman yenilenir", "limitim ne durumda", "keepalive", "pencere ne zaman bitiyor", or wants to start/stop/check the keepalive, fire a ping now, or read its logs.
+description: Inspect or control the No 5-Hour Limit keepalive - the local or GitHub Actions job that pings the Claude and Codex CLIs every ~5 hours to send scheduled minimal prompts; reset times are only estimates. Use when the user asks about their 5-hour limit/window, "kotam ne zaman yenilenir", "limitim ne durumda", "keepalive", "pencere ne zaman bitiyor", or wants to start/stop/check the keepalive, fire a ping now, or read its logs.
 ---
 
 # No 5-Hour Limit
 
 A scheduled job that sends a tiny prompt to the Claude CLI (and optionally the
-Codex CLI) once every `INTERVAL_MINUTES` (default 301 = 5 h + 1 min). Each ping
-opens a fresh 5-hour usage window, so the window boundary is predictable
-instead of starting whenever the user happens to send their first real message.
+Codex CLI) once every `INTERVAL_MINUTES` (default 301 = 5 h + 1 min). A ping may start an idle usage window. It cannot reset a live window or
+initialize every model-specific counter. Normal ChatGPT chat has separate
+allowances and is not supported by this CLI integration.
 
 ## Locating the install
 
@@ -51,7 +51,8 @@ machine. In that case the authoritative state is `state/cloud-state.env` in the
 repo, not `state/state.env`:
 
 ```
-git -C "<REPO>" pull --quiet
+git -C "<REPO>" fetch origin
+git -C "<REPO>" show origin/HEAD:state/cloud-state.env
 L5H_STATE_FILE="<REPO>/state/cloud-state.env" bash "<REPO>/bin/keepalive.sh" --config "<REPO>/cloud.env" --status
 ```
 
@@ -72,13 +73,13 @@ changes cloud behaviour. `config.env` only affects the local scheduler.
 
 | User asks | Do this |
 |---|---|
-| "When does my window reset?" / "Kotam ne zaman yenilenir?" | Run `--status` / `-Status` and report **window ends** and **next ping**. |
+| "When does my window reset?" / "Kotam ne zaman yenilenir?" | Run `--status` / `-Status` and report the estimated window end and next ping, explicitly labeling them estimates. Use the provider Usage page for actual reset times. |
 | "Is it running?" | `--status` shows the scheduler row: installed / NOT INSTALLED. |
 | "Start a window now" | Run with `--force` / `-Force`. It sends a message immediately; it does not reset a window that is already open, so it only helps once the previous one has expired. |
 | "It isn't working" | Read the newest file in `<REPO>/logs/`. The most common cause is `not logged in` - the fix is `claude auth login` (or `codex login`). |
 | "Turn it off" (local) | Run the uninstall script. It only removes the scheduler entry; config and logs stay. |
 | "Turn it off" (cloud) | `gh workflow disable keepalive.yml`. The local uninstaller does not stop GitHub Actions. To revoke the credential too, follow SECURITY.md. |
-| "Also keep ChatGPT/Codex alive" | Set `CODEX_ENABLED=true` in `<REPO>/config.env` (local) or `<REPO>/cloud.env` (cloud, then commit and push). |
+| "Also keep Codex alive" | Set `CODEX_ENABLED=true` in `<REPO>/config.env` (local) or `<REPO>/cloud.env` (cloud, then commit and push). |
 | "Does it work when my PC is off?" | Only if the GitHub Actions workflow is set up. Check `gh run list --workflow keepalive.yml`. |
 
 ## Editing settings
@@ -92,6 +93,9 @@ Changes take effect on the next scheduler tick - no restart needed.
 
 ## Cautions
 
-- `--force` burns the currently open window. Only run it when the user asks.
+- `--force` spends a little quota; it does not reset or consume an entire window. Only run it when requested.
+- Prefer local Codex to avoid copied cloud refresh credentials becoming stale.
+- Fetching does not update the local state file; use the fetched file for cloud status.
+- A workflow file or green no-op run alone does not prove the cloud scheduler works.
 - Do not lower `INTERVAL_MINUTES` below 300: pinging inside a live window
   wastes it without opening a new one.

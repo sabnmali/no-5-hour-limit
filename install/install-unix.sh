@@ -29,6 +29,7 @@ done
 case "$CHECK_MINUTES" in ''|*[!0-9]*) CHECK_MINUTES=5 ;; esac
 [ "$CHECK_MINUTES" -ge 1 ] || CHECK_MINUTES=5
 [ "$CHECK_MINUTES" -le 59 ] || CHECK_MINUTES=59
+CHECK_MINUTES=$((10#$CHECK_MINUTES))
 
 ok()   { printf '  OK  %s\n' "$*"; }
 warn() { printf '  !   %s\n' "$*"; }
@@ -41,6 +42,7 @@ echo
 
 [ -f "$KEEPALIVE" ] || { echo "Cannot find $KEEPALIVE - run this from inside the repository." >&2; exit 1; }
 chmod +x "$KEEPALIVE" "$SCRIPT_DIR"/*.sh 2>/dev/null || true
+mkdir -p "$REPO_ROOT/logs" "$REPO_ROOT/state"
 
 # --- 1. config -------------------------------------------------------------
 if [ ! -f "$REPO_ROOT/config.env" ]; then
@@ -153,8 +155,11 @@ PLIST_EOF
 else
     # cron treats an unescaped % as end-of-command plus stdin, so a path
     # containing one would silently truncate the job.
-    CRON_KEEPALIVE="$(printf '%s' "$KEEPALIVE" | sed 's/%/\\%/g')"
-    CRON_LINE="*/$CHECK_MINUTES * * * * /bin/bash \"$CRON_KEEPALIVE\" >/dev/null 2>&1  # no-5-hour-limit"
+    # Single-quote the shell path before cron's separate percent escaping.
+    # Double quotes would execute dollar/backtick substitutions in a folder name.
+    case "$KEEPALIVE" in *$'\n'*|*$'\r'*) echo 'Newlines in install paths are unsupported' >&2; exit 2 ;; esac
+    CRON_KEEPALIVE="$(printf '%s' "$KEEPALIVE" | sed "s/'/'\\\\''/g" | sed 's/%/\\%/g')"
+    CRON_LINE="*/$CHECK_MINUTES * * * * /bin/bash '$CRON_KEEPALIVE' >/dev/null 2>&1  # no-5-hour-limit"
     ( crontab -l 2>/dev/null | grep -v 'no-5-hour-limit' || true; echo "$CRON_LINE" ) | crontab -
     ok "crontab entry installed (checks every $CHECK_MINUTES minute(s))"
     step "$CRON_LINE"

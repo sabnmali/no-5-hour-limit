@@ -5,8 +5,8 @@
 .DESCRIPTION
     Sends a minimal "ping" prompt to the Claude CLI and/or the Codex CLI once
     the configured interval has elapsed since the last successful ping. That
-    opens a fresh 5-hour usage window, so window boundaries stay predictable
-    instead of starting whenever you happen to send your first real message.
+    may start an idle usage window. Reported window ends are estimates, not
+    actual provider reset times. Every ping consumes subscription usage.
 
     The script is idempotent. It only pings when the interval has actually
     elapsed, so the scheduler just needs to poke it every few minutes.
@@ -36,6 +36,7 @@ param(
 
 # Native CLIs write progress to stderr; 'Stop' would turn that into a crash.
 $ErrorActionPreference = 'Continue'
+. (Join-Path $PSScriptRoot 'run-cli.ps1')
 
 # --------------------------------------------------------------------------
 # Paths
@@ -67,7 +68,7 @@ $Config = @{
     CODEX_MODEL            = ''
     CODEX_PROMPT           = 'ok'
     CODEX_BIN              = ''
-    CODEX_REASONING_EFFORT = 'minimal'
+    CODEX_REASONING_EFFORT = 'low'
     LOG_RETENTION_DAYS     = '30'
     QUIET_HOURS            = ''
 }
@@ -110,10 +111,9 @@ $parsed = 0
 if ([int]::TryParse((Get-Cfg 'INTERVAL_MINUTES'), [ref] $parsed) -and $parsed -ge 1) {
     $IntervalMinutes = $parsed
 }
-# A window lasts 300 minutes, so anything under that pings inside a live window
-# and buys nothing. 60 is a hard stop against a typo turning this into a
-# quota-burning loop.
-if ($IntervalMinutes -lt 60) { $IntervalMinutes = 60 }
+# Reject intervals that would repeatedly consume quota inside the same window.
+if ($IntervalMinutes -lt 300) { $IntervalMinutes = 300 }
+if ($IntervalMinutes -gt 525600) { $IntervalMinutes = 525600 }
 
 # --------------------------------------------------------------------------
 # Logging
@@ -156,9 +156,9 @@ function Read-State {
     $result = @{}
     if (-not (Test-Path -LiteralPath $StateFile)) { return $result }
     try {
-        $raw = Get-Content -LiteralPath $StateFile -Raw
+        $raw = Get-Content -LiteralPath $StateFile -Raw -ErrorAction Stop
         if ([string]::IsNullOrWhiteSpace($raw)) { return $result }
-        $obj = $raw | ConvertFrom-Json
+        $obj = $raw | ConvertFrom-Json -ErrorAction Stop
         foreach ($p in $obj.PSObject.Properties) { $result[$p.Name] = $p.Value }
     } catch { }
     return $result
@@ -170,8 +170,16 @@ function Write-State($State) {
     # lost timestamp means the next run pings again for nothing.
     $tmp = "$StateFile.tmp.$PID"
     try {
-        ($State | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $tmp -Encoding UTF8
-        Move-Item -LiteralPath $tmp -Destination $StateFile -Force
+        ($State | ConvertTo-Json -Depth 6) | Set-Content -LiteralPath $tmp -Encoding UTF8 -ErrorAction Stop
+        if ([System.IO.File]::Exists($StateFile)) {
+            # PowerShell 5.1 marshals $null to an empty string here, which is
+            # not a valid backup path. Use an explicit temporary backup.
+            $backup = "$StateFile.bak.$PID"
+            [System.IO.File]::Replace($tmp, $StateFile, $backup)
+            Remove-Item -LiteralPath $backup -Force -ErrorAction SilentlyContinue
+        } else {
+            [System.IO.File]::Move($tmp, $StateFile)
+        }
         return $true
     } catch {
         Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
@@ -253,6 +261,10 @@ function Resolve-Cli([string] $Name) {
 }
 
 function Invoke-ClaudePing {
+    if ($env:ANTHROPIC_API_KEY -or $env:ANTHROPIC_AUTH_TOKEN -or
+        $env:CLAUDE_CODE_USE_BEDROCK -eq '1' -or $env:CLAUDE_CODE_USE_VERTEX -eq '1' -or $env:CLAUDE_CODE_USE_FOUNDRY -eq '1') {
+        return @{ ok = $false; message = 'API/provider credentials detected; use subscription login in a clean environment' }
+    }
     $exe = Resolve-Cli 'claude'
     if (-not $exe) {
         return @{ ok = $false; message = 'claude CLI not found - set CLAUDE_BIN in config.env, or run install\setup-cli-windows.ps1' }
@@ -262,7 +274,7 @@ function Invoke-ClaudePing {
         '-p', (Get-Cfg 'CLAUDE_PROMPT'),
         '--model', (Get-Cfg 'CLAUDE_MODEL'),
         '--system-prompt', 'Reply with exactly: ok',
-        '--restricted',
+        '--restricted', '--safe-mode', '--tools=',
         '--strict-mcp-config',
         '--no-session-persistence',
         '--permission-mode', 'dontAsk',
@@ -271,44 +283,17 @@ function Invoke-ClaudePing {
 
     if ($DryRun) { return @{ ok = $true; message = "DRY RUN: claude $($cliArgs -join ' ')" } }
 
-    $raw = ''
-    $code = 0
-    Push-Location $WorkDir
-    try {
-        $raw = (& $exe @cliArgs 2>&1 | Out-String)
-        $code = $LASTEXITCODE
-    } catch {
-        Pop-Location
-        return @{ ok = $false; message = "claude invocation failed: $($_.Exception.Message)" }
-    }
-    Pop-Location
-
-    # Matching on text alone is not enough: an unrecognised failure would be
-    # recorded as a successful ping and stall the schedule for five hours.
-    if ($code -ne 0) {
-        $flat = (Protect-Secrets (($raw -replace '\s+', ' ').Trim()))
-        if ($flat.Length -gt 200) { $flat = $flat.Substring(0, 200) + '...' }
-        return @{ ok = $false; message = "claude exited $code`: $flat" }
+    $invocation = Invoke-BoundedCli $exe $cliArgs $WorkDir
+    $raw = $invocation.output
+    if ($invocation.code -ne 0) {
+        return @{ ok = $false; message = "claude exited $($invocation.code) (CLI output withheld; 124 = timeout)" }
     }
 
     $json = $null
-    try { $json = $raw | ConvertFrom-Json } catch { }
+    try { $json = $raw | ConvertFrom-Json -ErrorAction Stop } catch { }
 
-    if ($null -eq $json) {
-        $flat = (Protect-Secrets (($raw -replace '\s+', ' ').Trim()))
-        if ($flat.Length -gt 300) { $flat = $flat.Substring(0, 300) + '...' }
-        return @{ ok = $false; message = "unreadable claude output: $flat" }
-    }
-
-    $isError = $false
-    if ($json.PSObject.Properties.Name -contains 'is_error') { $isError = [bool] $json.is_error }
-    if ($isError) {
-        $msg = 'unknown error'
-        if ($json.PSObject.Properties.Name -contains 'result') { $msg = [string] $json.result }
-        if ($msg -match '(?i)not logged in') {
-            $msg = 'not logged in - run: claude auth login'
-        }
-        return @{ ok = $false; message = "claude: $msg" }
+    if ($null -eq $json -or $json.type -ne 'result' -or $json.subtype -ne 'success' -or $json.is_error -ne $false) {
+        return @{ ok = $false; message = 'claude did not return a successful result (CLI output withheld)' }
     }
 
     $inTok = 0; $outTok = 0; $ms = 0
@@ -328,7 +313,7 @@ function Invoke-CodexPing {
         return @{ ok = $false; message = 'codex CLI not found - set CODEX_BIN in config.env, or npm i -g @openai/codex' }
     }
 
-    $cliArgs = @('exec', '--skip-git-repo-check', '--ephemeral', '-s', 'read-only', '-C', $WorkDir)
+    $cliArgs = @('exec', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '--ignore-rules', '--json', '-s', 'read-only', '-c', 'project_doc_max_bytes=0', '-c', 'forced_login_method="chatgpt"', '-C', $WorkDir)
 
     $model = Get-Cfg 'CODEX_MODEL'
     if (-not [string]::IsNullOrWhiteSpace($model)) { $cliArgs += @('-m', $model) }
@@ -338,35 +323,27 @@ function Invoke-CodexPing {
         $cliArgs += @('-c', ('model_reasoning_effort="{0}"' -f $effort))
     }
 
-    $cliArgs += (Get-Cfg 'CODEX_PROMPT')
+    $cliArgs += @('--', (Get-Cfg 'CODEX_PROMPT'))
 
     if ($DryRun) { return @{ ok = $true; message = "DRY RUN: codex $($cliArgs -join ' ')" } }
 
-    $raw = ''
-    $code = 0
-    try {
-        $raw = (& $exe @cliArgs 2>&1 | Out-String)
-        $code = $LASTEXITCODE
-    } catch {
-        return @{ ok = $false; message = "codex invocation failed: $($_.Exception.Message)" }
+    $invocation = Invoke-BoundedCli $exe $cliArgs $WorkDir
+    $raw = $invocation.output
+    if ($invocation.code -ne 0) {
+        return @{ ok = $false; message = "codex exited $($invocation.code) (CLI output withheld; 124 = timeout)" }
     }
 
-    if ($code -ne 0) {
-        $flat = (Protect-Secrets (($raw -replace '\s+', ' ').Trim()))
-        if ($flat.Length -gt 200) { $flat = $flat.Substring(0, 200) + '...' }
-        return @{ ok = $false; message = "codex exited $code`: $flat" }
+    $completed = $false
+    foreach ($line in ($raw -split '\r?\n')) {
+        try {
+            $event = $line | ConvertFrom-Json -ErrorAction Stop
+            if ($event.type -eq 'turn.failed' -or $event.type -eq 'error') {
+                return @{ ok = $false; message = 'codex reported an error (CLI output withheld)' }
+            }
+            if ($event.type -eq 'turn.completed' -and $null -ne $event.usage) { $completed = $true }
+        } catch { }
     }
-
-    if ($raw -match '(?i)usage limit') {
-        return @{ ok = $false; message = 'usage limit reached - will retry next cycle' }
-    }
-    if ($raw -match '(?i)not logged in|run .{0,3}codex login') {
-        return @{ ok = $false; message = 'not logged in - run: codex login' }
-    }
-    if ($raw -match '(?im)^\s*ERROR:\s*(.+)$') {
-        return @{ ok = $false; message = "error: $($Matches[1].Trim())" }
-    }
-
+    if (-not $completed) { return @{ ok = $false; message = 'codex returned no completed turn (CLI output withheld)' } }
     return @{ ok = $true; message = 'codex ok' }
 }
 
@@ -414,12 +391,12 @@ function Show-Status {
 
         $remainText = 'expired'
         if ($remaining.TotalSeconds -gt 0) {
-            $remainText = '{0}h {1}m left' -f [int] $remaining.TotalHours, $remaining.Minutes
+            $remainText = '{0}h {1}m left' -f [math]::Floor($remaining.TotalHours), $remaining.Minutes
         }
 
         Write-Host ("  {0}       : enabled" -f $label) -ForegroundColor Green
         Write-Host ("     last ping   {0}" -f $lastLocal.ToString('yyyy-MM-dd HH:mm:ss'))
-        Write-Host ("     window ends {0}  ({1})" -f $windowEnds.ToString('yyyy-MM-dd HH:mm:ss'), $remainText)
+        Write-Host ("     estimated window end {0}  ({1}; not provider-reported)" -f $windowEnds.ToString('yyyy-MM-dd HH:mm:ss'), $remainText)
         Write-Host ("     next ping   {0}" -f $nextDue.ToString('yyyy-MM-dd HH:mm:ss'))
     }
 
@@ -460,6 +437,15 @@ if ((Test-QuietHours) -and (-not $Force)) {
     exit 0
 }
 
+# An exclusive file handle also covers manual runs; Task Scheduler's
+# IgnoreNew setting alone cannot do that. The OS releases it on a crash.
+try {
+    $runLock = [System.IO.File]::Open((Join-Path $StateDir '.lock-windows'), 'OpenOrCreate', 'ReadWrite', 'None')
+} catch {
+    Write-Log 'warn' 'another run is already working - skipping this one'
+    exit 0
+}
+try {
 $state   = Read-State
 $anyFail = $false
 
@@ -496,5 +482,6 @@ foreach ($name in @('claude', 'codex')) {
     }
 }
 
+} finally { $runLock.Dispose() }
 if ($anyFail) { exit 1 }
 exit 0

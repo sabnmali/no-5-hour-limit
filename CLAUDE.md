@@ -12,9 +12,10 @@ version.
 
 A keepalive. It sends a one-word prompt to the Claude CLI (and optionally the
 Codex CLI) once 301 minutes have elapsed since the last successful ping, which
-opens a fresh 5-hour usage window. It does **not** raise or bypass any limit -
-it stops windows from being wasted, using the user's own subscription through
-the official CLIs.
+may start an idle usage window. It does not read provider reset times, raise
+limits, or guarantee quota availability. All pings consume usage. Normal
+ChatGPT chat allowances are separate from Codex; do not claim this activates
+every application or model counter. See the coverage table in README.md.
 
 ## Decide which route the user wants
 
@@ -23,8 +24,10 @@ the official CLIs.
 | **Cloud** (recommended) | GitHub Actions | yes |
 | **Local** | Task Scheduler / launchd / cron | no |
 
-Ask if it is not obvious. Do not set up both: two independent schedules ping
-the same account and waste quota without opening extra windows.
+Choose one scheduler per provider/account across all devices. Claude in the
+cloud and Codex locally is valid; do not enable the same provider in both.
+Prefer local Codex: copied refresh credentials can become stale or conflict
+with the desktop session. Cloud Codex requires ongoing credential maintenance.
 
 ## Cloud route
 
@@ -122,8 +125,10 @@ It only opens a new window if the previous one has already expired.
 - Keep third-party actions pinned to commit SHAs.
 - Keep the config-key allowlists in both keepalive scripts. They are what stops
   a config file from reassigning `PATH` or the state file location.
-- Keep the log redactor. Cloud logs are public on a public repository.
-- Never widen `INTERVAL_MINUTES` below its 60-minute floor.
+- Keep the log redactor and never log raw CLI output. Cloud logs are public.
+- Keep run locks, bounded CLI invocation, success validation, and atomic state writes.
+- The separate offline test workflow has read-only permissions and no AI secrets.
+- Never lower `INTERVAL_MINUTES` below its 300-minute floor.
 
 ## Things that will bite you
 
@@ -136,8 +141,9 @@ It only opens a new window if the previous one has already expired.
   `CODEX_BIN` are for; the installers fill them in.
 - **The CLI's login is separate from the Claude desktop app.** `claude auth
   status` reporting `loggedIn: false` while the desktop app works is normal.
-- **Codex refresh tokens rotate.** A `CODEX_AUTH_JSON` secret can go stale;
-  the fix is to copy `~/.codex/auth.json` into the secret again.
+- **Codex refresh tokens rotate.** A `CODEX_AUTH_JSON` secret can go stale and
+  interfere with a shared desktop login. Prefer local Codex or a dedicated
+  maintained cloud login. Never commit auth.json or add it to an artifact/cache.
 - **Do not set `INTERVAL_MINUTES` below 300.** Pinging inside a live window
   consumes quota without opening a new window.
 - **`.sh` files must keep LF endings.** `.gitattributes` enforces this; do not

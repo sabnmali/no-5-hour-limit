@@ -1,415 +1,206 @@
 # No 5-Hour Limit
 
-**Claude ve ChatGPT/Codex'in 5 saatlik kullanım pencerelerini senin belirlediğin
-saatlere oturt.**
+Resmî Claude Code ve Codex CLI araçlarına zamanlanmış, küçük mesajlar gönderir.
+[English](README.md) · [Güvenlik](SECURITY.md)
 
-[English README](README.md)
+## Gerçekte ne yapar?
 
----
+Her servisin son başarılı gönderiminden en az **301 dakika** geçince `ok`
+gönderir. Birbirinden bağımsız iki gönderim zamanı tutar. Kullanılmayan bir
+oturumun sayacını başlatabilir; açık pencereyi sıfırlamaz, kota artırmaz ve
+çalışmaya döndüğünde kullanım hakkın olacağını garanti etmez. Her mesaj,
+haftalık kota dahil kullanım hakkından harcar.
 
-## Sorun
+Projenin adı sınırsız kullanım sözü değildir. Script, sağlayıcının gerçek
+sayaçlarını değil **kendi başarılı gönderim zamanlarını** takip eder. Başarılı
+bir cevap yalnızca mesajın işlendiğini kanıtlar; yeni pencere açıldığını değil.
 
-Claude Code ve Codex, kullanımı **kayan 5 saatlik pencereler** halinde sayar.
-Sayaç, günün sabit bir saatinde değil, **ilk mesajını attığın anda** başlar.
-Yani sabah 09:40'ta tek bir kısa soru sorup 13:00'te geri dönersen, hiç
-kullanmadığın bir pencerenin dört saatini yakmış olursun — ve yeni pencere
-14:40'tan önce açılmaz.
+## Hangi uygulama ve modelleri kapsar?
 
-## Bu proje ne yapıyor
-
-Arka planda çalışan küçük bir görev, her **301 dakikada** (5 saat + 1 dakika)
-bir CLI'a tek kelimelik bir mesaj gönderiyor. Her mesaj, bir önceki pencere
-kapandığı anda yenisini açıyor. Sonuç:
-
-- pencereler 7/24 uç uca diziliyor
-- mevcut pencerenin ne zaman bittiğini, yenisinin ne zaman başladığını her an
-  biliyorsun
-- iki saniyelik bir soru yüzünden koca bir pencere yanmıyor
-
-İki şekilde çalışabilir: kendi bilgisayarında (Görev Zamanlayıcı / cron /
-launchd) ya da tamamen bulutta, GitHub Actions üzerinde. Bulut seçeneği,
-bilgisayarın kapalı, uykuda veya internetsiz olsa da çalışmaya devam eder —
-çoğu kişinin istediği bu.
-
-Mesaj **en ucuz modelde** (varsayılan: Haiku) gönderiliyor; sistem talimatı altı
-kelimeye indiriliyor ve bütün araçlar kapatılıyor. Yani kotandan pratikte
-ölçülemeyecek kadar az yiyor.
-
-## Ne değil
-
-Bu proje limitini **yükseltmiyor**, hiçbir şeyi atlatmıyor, sana fazladan kota
-vermiyor. Sadece pencere sınırlarının istediğin yere denk gelmesini sağlıyor.
-Kendi aboneliğini, resmî CLI üzerinden, sanki `ok` yazmışsın gibi kullanıyor.
-
----
-
-## Bir AI'a kurdurmak
-
-Codex'e, Claude Code'a ya da benzeri bir asistana bu deponun linkini verip
-"kur" demen yeterli. [AGENTS.md](AGENTS.md) dosyası ona hangi yolu seçeceğini,
-ne çalıştıracağını, nerede tuzak olduğunu ve — en önemlisi — giriş anahtarına
-kendisinin asla dokunmaması gerektiğini anlatıyor.
-
----
-
-## Gerekenler
-
-| | |
+| Alan | Kapsam |
 |---|---|
-| **Claude** | [Claude Code CLI](https://claude.com/claude-code) + Claude aboneliği |
-| **Codex** *(isteğe bağlı)* | [Codex CLI](https://github.com/openai/codex) + Codex içeren bir ChatGPT planı |
-| **İşletim sistemi** | Windows 10/11, macOS veya Linux |
+| Claude / Claude Code / Cowork | Uygun aboneliklerde Claude Code kullanımı ortak kotaya dahildir. Model, özellik, haftalık ve aylık ek limitler devam eder. |
+| Codex | ChatGPT abonelik girişiyle resmî Codex CLI üzerinden mesaj gönderir. |
+| Normal ChatGPT sohbetleri | **Desteklenmiyor.** Sohbet kullanım kuralları Work/Codex'ten ayrıdır. Codex mesajı bütün ChatGPT modellerinin sayaçlarını başlatmaz. |
+| Başka AI araçları | Genel bir destek yoktur; resmî entegrasyon ve gerçek kota kuralları ayrıca doğrulanmalıdır. |
 
-Açık kalan bir bilgisayar. Uyuyan bir dizüstünde kaçan mesajlar, uyanır uyanmaz
-gönderilir.
+Eylül 2026'da kontrol edilen kaynaklar:
+[OpenAI: sohbet ve Work/Codex ayrımı](https://help.openai.com/en/articles/20001354),
+[Claude Code Pro/Max](https://support.claude.com/en/articles/11145838-using-claude-code-with-your-pro-or-max-plan),
+[Claude kullanım limitleri](https://support.claude.com/en/articles/9797557-usage-limit-best-practices).
+Ortak kota, tek mesajın modele özel bütün sayaçları başlattığı anlamına gelmez.
 
----
+## Nerede çalışmalı?
 
-## Kurulum
+Cihazlar dahil **her servis/hesap için tek zamanlayıcı** kullan. Claude bulutta,
+Codex yerelde çalışabilir. Aynı servisi iki bağımsız zamanlayıcıda açmak gereksiz
+kota tüketir.
 
-```bash
-git clone https://github.com/<kullanici>/no-5-hour-limit.git
+- **Yerel:** Windows Görev Zamanlayıcı, macOS launchd veya Linux cron.
+  Mevcut CLI girişini kullanır. Bilgisayar açık, uyanık ve çevrimiçi olmalıdır.
+  Windows görevi kullanıcının oturum açmış olmasını gerektirir.
+- **Bulut:** GitHub Actions. Bilgisayar kapalıyken de çalışır. Her 30 dakikada
+  kontrol eder; GitHub çalışmaları geciktirebilir veya atlayabilir. Dakikası
+  dakikasına zamanlama garantisi yoktur. Abonelik erişim bilgisi depo secret'ı olur.
+
+**Codex için yerel kurulum tercih edilir.** Yenileme anahtarları değişir.
+Masaüstündeki aynı oturumu geçici bir bulut çalıştırıcısına kopyalamak GitHub'daki
+anahtarı eskitebilir ve masaüstü girişiyle çakışabilir. Bulut Codex desteği
+anahtar bakımı gerektirir; kalıcı, bakım gerektirmeyen giriş değildir. Bu proje
+GitHub secret'larını kendiliğinden yenilemez.
+
+## Yerel kurulum
+
+Resmî CLI araçlarını ayrıca kur ve aboneliğinle giriş yap:
+
+```sh
+claude auth login
+codex login  # isteğe bağlı; API anahtarı değil ChatGPT girişi
+```
+
+Test edilen sürümler: Claude Code **2.1.261**, Codex **0.153.1**. Eski
+sürümler kullanılan yalıtım seçeneklerini desteklemeyebilir. Çalıştırmak için
+Python gerekmez; Python yalnızca geliştirme testlerinde kullanılır.
+
+```sh
+git clone https://github.com/sabnmali/no-5-hour-limit.git
 cd no-5-hour-limit
 ```
 
-### Windows
+`config.example.env` dosyasını `config.env` olarak kopyala; kurmadan önce
+servisleri seç. Claude zaten buluttaysa yalnızca Codex için:
 
-```powershell
-powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
-```
-
-`No5HourLimit` adında bir Görev Zamanlayıcı kaydı oluşturur. Senin
-kullanıcınla çalışır, yönetici yetkisi istemez, yeniden başlatma ve uyku
-sonrasında da devam eder.
-
-### macOS / Linux
-
-```bash
-./install/install-unix.sh
-```
-
-macOS'ta LaunchAgent, Linux'ta crontab kaydı oluşturur.
-
-### Sonra bir kez
-
-```bash
-claude auth login       # CLI'ın kendi girişi var, masaüstü uygulamasından ayrı
-codex login             # sadece Codex'i açacaksan
-```
-
-Windows'ta hem girişi yapan hem de CLI'ı Görev Zamanlayıcı'nın gerçekten
-erişebileceği bir yere kuran bir yardımcı var. Normal bir PowerShell
-penceresinde çalıştır:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
-```
-
-### İlk pencereyi başlat
-
-```bash
-# Windows
-powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Force
-# macOS / Linux
-./bin/keepalive.sh --force
-```
-
----
-
-## Buluttan çalıştır (önerilen)
-
-Yukarıdaki her şey senin bilgisayarının açık olmasını gerektiriyor. Makinen
-kapalıyken, uykudayken veya internetsizken de çalışsın istiyorsan bu depoyu
-GitHub'a gönder ve gönderimleri GitHub Actions yapsın.
-[`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) dosyası
-buna hazır.
-
-**1. Depoyu GitHub'a koy**
-
-```bash
-gh repo create no-5-hour-limit --public --source=. --remote=origin --push
-```
-
-**2. Kurulum scriptini çalıştır**
-
-```bash
-# Windows
-powershell -ExecutionPolicy Bypass -File install\setup-cloud-windows.ps1
-# macOS / Linux
-./install/setup-cloud.sh          # Codex de istiyorsan --codex ekle
-```
-
-Gerçek bir terminalde çalıştır — giriş yapman için tarayıcıyı açıyor. Sonra
-giriş anahtarını üretiyor, depo gizli anahtarı olarak saklıyor, ilk pencereni
-açıyor ve çalıştığını doğrulayana kadar bekliyor. Anahtar diske yazılmıyor ve
-ekrana geri basılmıyor.
-
-Kurulumun tamamı bu. Bundan sonrası GitHub'ın makinelerinde dönüyor; senin
-bilgisayarının hiçbir rolü kalmıyor.
-
-<details>
-<summary>Elle yapmak istersen</summary>
-
-```bash
-claude setup-token                                    # yazdırdığını kopyala
-gh secret set CLAUDE_CODE_OAUTH_TOKEN                 # yapıştır
-gh secret set CODEX_AUTH_JSON < ~/.codex/auth.json    # isteğe bağlı
-gh workflow run keepalive.yml -f force=true
-```
-
-Ya da site üzerinden: **Settings -> Secrets and variables -> Actions -> New
-repository secret**, sonra **Actions -> keepalive -> Run workflow**.
-
-</details>
-
-### Bilgisayar olmadan yönetmek
-
-`cloud.env` depoda duruyor. Telefonundan github.com'a girip aralığı
-değiştirebilir veya Codex'i açabilirsin; bir sonraki tur yeni ayarı kullanır.
-Her gönderim, pencerenin ne zaman biteceğini gösteren bir özet yazıyor;
-`state/cloud-state.env` de son gönderim zamanını tutuyor.
-
-### Güvenmeden önce bilmen gerekenler
-
-- **Zamanlama yaklaşıktır.** İş akışı 30 dakikada bir uyanır ve sadece önceki
-  pencere dolduysa ping atar; yani yeni pencere, eskisi kapandıktan sonra
-  yarım saat içinde açılır. Üstüne GitHub'ın zamanlayıcısı da birkaç dakika
-  gecikebilir. Pencereler yine uç uca dizilir, sadece sınırlar dakikası
-  dakikasına olmaz.
-- **Tamamen ücretsiz.** Sunucu yok, kart yok, ücretli plan yok. Public
-  depolarda GitHub Actions dakikaları sınırsız. Private depoda 30 dakikalık tur
-  ücretsiz 2000 dakikaya sığar ama payı dardır — public en rahatı.
-- **Token sadece ping'de harcanır.** Sırası gelmemiş bir tur hiçbir API çağrısı
-  yapmaz. Ping'in kendisi, en ucuz modelde günde ~5 kez yapılan tek bir kısa
-  alışveriştir.
-- **60 gün hiç hareket olmayan depolarda zamanlanmış iş akışları kapatılır.**
-  Her gönderim durum dosyasını commit ettiği için bu hareket sayılıyor.
-- **Token, aboneliğine erişim verir.** Sadece senin kontrolündeki bir depoya
-  koy. Gizli anahtarlar fork'lara ve pull request'lere aktarılmaz.
-- **Codex'in yenileme token'ları döner.** Codex gönderimleri bir gün hata
-  vermeye başlarsa `~/.codex/auth.json` dosyasını anahtara yeniden kopyala.
-
-### Tamamen kapatmak
-
-İş akışını durdurmak ping'leri keser ama anahtarı canlı bırakır. Erişimi
-tamamen kesmek için:
-
-```bash
-gh workflow disable keepalive.yml
-gh secret delete CLAUDE_CODE_OAUTH_TOKEN
-# sonra anahtarın kendisini iptal et: https://claude.ai/settings
-```
-
-[SECURITY.md](SECURITY.md) dosyasında anahtarların nerede durduğu, iş akışının
-neye yetkili olduğu ve yanlış bir ayarın kotanı yakmasını engelleyen korumalar
-anlatılıyor.
-
----
-
-### Bulut mu, yerel mi?
-
-Birini seç. İkisini birden çalıştırmak, aynı hesaba iki ayrı zamanlamanın
-gönderim yapması demek — fazladan pencere açmadan biraz kota harcar. Buluta
-geçtiysen yerel görevi kaldır:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File install\uninstall-windows.ps1
-```
-
----
-
-## Günlük kullanım
-
-Hiçbir şey yapman gerekmiyor. Duruma bakmak istersen:
-
-```bash
-# Windows
-powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Status
-# macOS / Linux
-./bin/keepalive.sh --status
-```
-
-```
-  No 5-Hour Limit - status
-  ---------------------------------------------------------
-  interval     : 301 minutes
-  quiet hours  : disabled (24/7)
-
-  claude       : enabled
-     last ping   2026-09-05 09:12:04     <- son gönderim
-     window ends 2026-09-05 14:12:04  (3h 41m left)   <- pencere bitişi
-     next ping   2026-09-05 14:13:04     <- yeni pencere
-  codex        : disabled
-
-  scheduler    : installed, state = Ready
-```
-
-Kurulum, birlikte gelen Claude Code becerisini de yüklüyor. Yani Claude'a düz
-Türkçe **"limitim ne durumda?"** diye sorman da yeterli — durumu kendisi
-kontrol edip söylüyor.
-
----
-
-## Ayarlar
-
-`config.env` dosyasını düzenle (ilk kurulumda `config.example.env`'den
-oluşturulur). Değişiklikler bir sonraki turda geçerli olur, yeniden başlatmaya
-gerek yok.
-
-| Anahtar | Varsayılan | Anlamı |
-|---|---|---|
-| `INTERVAL_MINUTES` | `301` | İki gönderim arası dakika. 300'ün altına inme — açık pencerenin içine mesaj atmak pencereyi boşa harcar. 60'ın altı 60'a yuvarlanır. |
-| `CLAUDE_ENABLED` | `true` | Claude penceresini döndür. |
-| `CLAUDE_MODEL` | `haiku` | Gönderimde kullanılan model. En ucuzu en iyisi. |
-| `CLAUDE_PROMPT` | `ok` | Gönderilecek metin. Kısa tut. |
-| `CLAUDE_BIN` | *(kurulumda dolar)* | `claude` komutunun tam yolu. Zamanlayıcılar dar bir `PATH` ile çalıştığı için gerekli. |
-| `CODEX_ENABLED` | `false` | `true` yaparsan Codex penceresi de dönmeye başlar. |
-| `CODEX_MODEL` | *(boş)* | Boş = Codex ayarındaki varsayılan model. |
-| `CODEX_PROMPT` | `ok` | Codex'e gönderilecek metin. |
-| `CODEX_BIN` | *(kurulumda dolar)* | `codex` komutunun tam yolu. |
-| `CODEX_REASONING_EFFORT` | `minimal` | Codex gönderimini ucuz tutar. |
-| `LOG_RETENTION_DAYS` | `30` | Bundan eski kayıtları siler. `0` = hiç silme. |
-| `QUIET_HOURS` | *(boş)* | Örn. `02:00-08:00` — gece göndermez. Boş = tam 7/24. |
-
-### ChatGPT / Codex'i eklemek
-
-Codex de aynı şekilde sayıyor. İki adım:
-
-```bash
-codex login
-```
-
-sonra `config.env` içinde:
-
-```
+```ini
+CLAUDE_ENABLED=false
 CODEX_ENABLED=true
 ```
 
-İki servis birbirinden bağımsız izleniyor; biri limite takılırsa diğeri devam
-eder.
-
----
-
-## Nasıl çalışıyor
-
-```
-zamanlayıcı (5 dakikada bir)  ->  keepalive scripti
-                                       |
-                                       +-- son başarılı gönderimden bu yana
-                                       |   INTERVAL_MINUTES geçti mi?
-                                       |
-                                     hayır --> çık, hiçbir maliyet yok
-                                       |
-                                     evet --> claude -p "ok" --model haiku ...
-                                              zamanı kaydet
-                                              logs/ içine tek satır yaz
-```
-
-Gönderim zamanına zamanlayıcı değil, **scriptin kendisi** karar veriyor. Uyku,
-yeniden başlatma, kaçan turlar ve saat değişiklikleri bu yüzden sorun olmuyor:
-her uyandığında tek bir şey soruyor — *"301 dakika oldu mu?"*
-
-Gönderim bilerek en yalın hale getirildi:
-
-```
-claude -p "ok" --model haiku
-       --system-prompt "Reply with exactly: ok"   # tüm sistem talimatını değiştirir
-       --restricted                               # Bash yok, kod çalıştırma yok
-       --strict-mcp-config                        # MCP sunucusu yüklenmez
-       --no-session-persistence                   # diske hiçbir şey yazılmaz
-       --permission-mode dontAsk                  # asla izin sorup takılmaz
-       --output-format json
-```
-
----
-
-## Dosyalar
-
-```
-.github/workflows/        GitHub Actions: cihazdan bağımsız zamanlayıcı
-cloud.env                  Bulut ayarları - depoda durur, web'den düzenlenir
-state/cloud-state.env      Bulut son gönderim zamanları (runner commit eder)
-bin/keepalive.ps1          Windows: her şey burada (gönderim, durum, kayıt)
-bin/keepalive.sh           macOS/Linux: aynısı
-install/install-*.{ps1,sh} Zamanlayıcıyı ve beceriyi kurar
-AGENTS.md                  Bu repoyu kurması istenen bir AI için talimatlar
-install/setup-cloud*       Tek komutluk bulut kurulumu (token -> secret -> test)
-install/setup-cli-windows.ps1  Windows: yerel CLI kurulumu + giriş + yeniden kayıt
-install/uninstall-*        Zamanlayıcıyı kaldırır (ayar ve kayıtlar kalır)
-skill/no-5-hour-limit/    Claude Code becerisi: sohbette limitini sorabilirsin
-config.example.env         config.env için şablon
-logs/                      Her ay için bir kayıt dosyası
-state/                     Son gönderim zamanları
-```
-
----
-
-## Sorun giderme
-
-**`not logged in - run: claude auth login`**
-CLI'ın kimlik bilgileri masaüstü uygulamasından ayrı. Terminalde bir kez
-`claude auth login` çalıştır.
-
-**Arka plan görevi hiçbir şey yapmıyor ama elle çalıştırınca çalışıyor**
-
-Önce komutun gerçekten kurulu olduğundan emin ol — kendi terminalinde
-`claude --version` çalıştır. Claude **masaüstü uygulamasını** kurmuş olman
-sana `claude` **komutunu** vermez: uygulama kendi özel kopyasını taşır ve
-başka programlar onu çağıramaz. Komut satırı aracı ayrı bir kurulumdur:
-
-```
-npm install -g @anthropic-ai/claude-code
-```
-
-Komut terminalinde çalışıyor ama arka plan görevi hâlâ `claude CLI not found`
-diyorsa, zamanlayıcı farklı bir PATH ile çalışıyordur.
-
-Kurulum bunu kendisi tespit edip söylüyor. Çözüm, kullanıcı klasörüne kurulan
-ve zamanlayıcının erişebildiği yerel (native) sürüme geçmek:
+Windows:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File install\install-windows.ps1
 ```
 
-Bu komut yerel sürümü kurar, girişi yapar ve görevi yeniden kaydeder.
-İstersen her platformda yolu `config.env` içinde kendin de verebilirsin:
+macOS / Linux:
 
+```sh
+./install/install-unix.sh
 ```
-CLAUDE_BIN=C:\Users\kullanici\.local\bin\claude.exe
+
+Kurulum zamanlayıcıyı oluşturur, CLI yollarını kaydeder ve Claude becerisini
+kurar. Windows görevi başlatıp sonucunu da kontrol eder. Gönderim zamanı
+henüz gelmemişse başarılı bir görev, CLI bağlantısını kanıtlamaz. Unix'te
+scripti bir kez çalıştırarak sırası gelen gönderimi kontrol et. CLI bulunamıyorsa
+`*_BIN` alanına tam yolunu yaz. Windows Claude kurulum/giriş yardımcısı:
+`install/setup-cli-windows.ps1`.
+
+## Bulut kurulumu
+
+Depoyu kendi GitHub hesabına fork et. Klonunda aşağıdaki komutu **kendi normal
+terminalinde** çalıştır. Claude girişi ve token yapıştırılması insan gerektirir;
+asistan basılan Claude token'ını yakalamamalıdır.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\setup-cloud-windows.ps1
 ```
 
-**Kayıtlarda hiçbir şey yok**
-`-Status` / `--status` çıktısındaki `scheduler` satırına bak. Windows'ta Görev
-Zamanlayıcı'da `No5HourLimit`'ı, Linux'ta `crontab -l` çıktısını kontrol et.
+```sh
+./install/setup-cloud.sh
+```
 
-**`usage limit reached`**
-Pencereni zaten tükettiysen normaldir. Script geri çekilir, bir sonraki turda
-tekrar dener.
+Kurulum `CLAUDE_CODE_OAUTH_TOKEN` secret'ını kaydeder ve iş akışını başlatır.
+Bulut ayarları **cloud.env** içindedir; config.env bulutu etkilemez.
+İsteğe bağlı bulut Codex için Windows'ta `-Codex`, Unix'te `--codex` auth.json'ı
+yükler ve cloud.env'yi değiştirir. Codex'in GitHub'da açılması için bu değişikliği
+**commit edip push etmelisin**. Ayrı bir giriş kullan; anahtar eskidiğinde yeniden
+giriş gerekir. Kimlik bilgilerini asla commit etme.
 
-**Cron `claude` komutunu bulamıyor**
-Cron çok dar bir `PATH` ile çalışır. Crontab satırına tam yolu yaz ya da
-crontab'ın başına bir `PATH=` satırı ekle.
+İş akışı yalnızca varsayılan dalda çalışır. Durum kaydı için `contents: write`
+gerekir. Action commit'leri ve CLI sürümleri sabitlenmiştir. Güncellemeleri
+incelemeden değiştirme. GitHub zamanlanmış çalışmaları durdurabilir; Actions
+sayfasını kontrol et. Public depolarda standart çalıştırıcılar ilgili GitHub
+koşullarına göre ücretsizdir. Private depo dakikaları ve ek ücretler plana ve
+çalışma sürelerine bağlıdır; sabit aylık maliyet garantisi yoktur.
 
----
+## Ayarlar
 
-## Kaldırma
+`config.env` yereldir ve Git'e eklenmez. `cloud.env` yayımlanan ayardır.
+İkisi de yalnızca KEY=VALUE verisidir; bilinmeyen anahtarlar dikkate alınmaz.
+
+| Anahtar | Varsayılan | Anlamı |
+|---|---|---|
+| INTERVAL_MINUTES | 301 | Başarılı gönderimden sonraki en az dakika; 300–525600 aralığına sınırlandırılır. |
+| CLAUDE_ENABLED | true | Claude'u açar. |
+| CLAUDE_MODEL | haiku | Claude model adı veya kimliği. |
+| CLAUDE_PROMPT | ok | Gönderilecek kısa metin. |
+| CLAUDE_BIN | boş | CLI tam yolu; boşsa bilinen konumlar aranır. |
+| CODEX_ENABLED | false | Codex'i açar. |
+| CODEX_MODEL | boş | CLI'ın yerleşik varsayılanı. Kullanıcı config'i bilerek yüklenmez. Planında bulunan hafif bir model seçebilirsin. |
+| CODEX_PROMPT | ok | Codex'e gönderilecek kısa metin. |
+| CODEX_BIN | boş | CLI tam yolu. |
+| CODEX_REASONING_EFFORT | low | Seçilen modelin desteklediği düşünme seviyesi. |
+| LOG_RETENTION_DAYS | 30 | Eski aylık keepalive kayıtlarını temizler; 0 temizliği kapatır. |
+| QUIET_HOURS | boş | Yerel saate göre HH:MM-HH:MM. GitHub çalıştırıcısı UTC kullanır. |
+
+Claude güvenli/kısıtlı modda, yerleşik araçlar ve MCP kapalı çalışır.
+Codex salt okunur ortamda kullanıcı ayarlarını, kurallarını ve proje belgelerini
+yüklemeden çalışır. Codex'in yerleşik araçları hâlâ vardır; güvenmediğin metni
+prompt olarak kullanma. Yönetici politikaları geçerli olabilir. Her CLI çağrısı
+yaklaşık 120 saniyeyle sınırlıdır. Bir servisin hatası diğerinin başarısını silmez.
+
+## Durum ve kontrol
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Status
+powershell -NoProfile -ExecutionPolicy Bypass -File bin\keepalive.ps1 -DryRun
+# Yalnızca hemen gerçek mesaj gönderilmesi isteniyorsa:
+powershell -NoProfile -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Force
+```
+
+```sh
+./bin/keepalive.sh --status
+./bin/keepalive.sh --dry-run
+./bin/keepalive.sh --force
+L5H_STATE_FILE=state/cloud-state.env ./bin/keepalive.sh --config cloud.env --status
+gh run list --workflow keepalive.yml -L 5
+```
+
+Tahmini bitiş = son gönderim + 5 saat. **Sağlayıcıdan alınmış sıfırlanma saati
+değildir.** Gerçek sayaç için servisin Kullanım sayfasına bak. `--force` aralığı
+ve sessiz saatleri yok sayar; açık pencereyi sıfırlamaz. Bash `--due` gönderim
+zamanı geldiyse 0, iş yoksa 3 döner. `--enabled` açık servisleri listeler.
+Normal çalışmada servis veya durum yazma hatası 1 döndürür.
+
+## Sorun giderme ve kaldırma
+
+Yeşil GitHub çalışması yalnızca “henüz zamanı gelmedi” anlamına gelebilir.
+Gerçek mesajı **Ping** adımı ve kayıtlı zamanlarla kontrol et. Güvenlik için ham
+CLI hata çıktıları yayımlanmaz. `claude auth status`, `codex login status`, CLI
+sürümleri ve model erişimini kontrol et. Başarısız gönderim bir sonraki
+zamanlayıcı turunda yeniden denenir.
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File install\uninstall-windows.ps1
 ```
 
-```bash
+```sh
 ./install/uninstall-unix.sh
+# Bulut:
+gh workflow disable keepalive.yml
 ```
 
-Sadece zamanlayıcı kaydını siler. `config.env`, `logs/` ve `state/` yerinde
-kalır; her şeyi silmek için klasörü kaldırman yeterli.
+Yerel kaldırma ayarları, kayıtları ve CLI girişini korur. İş akışını kapatmak
+anahtarı iptal etmez. İptal işlemleri [SECURITY.md](SECURITY.md) içindedir.
 
----
+## Geliştirme
 
-## Lisans
+```sh
+python -m unittest discover -s tests -v
+```
 
-MIT — [LICENSE](LICENSE) dosyasına bak.
+Testler sahte CLI ve geçici klasörlerle çalışır, gerçek AI hesabı kullanmaz.
+Test iş akışı Windows, Linux ve macOS'u kapsar. Scriptler `bin/`, kurulumlar
+`install/` içindedir. `AGENTS.md` ve `CLAUDE.md` birebir aynı tutulur. Yerel
+kayıtlar, kimlik bilgileri ve talimat yedekleri Git'e eklenmez.
 
-Anthropic veya OpenAI ile bağlantılı değildir. Kendi aboneliğinin koşulları
-çerçevesinde kullan.
+MIT — [LICENSE](LICENSE). Anthropic veya OpenAI ile bağlantılı değildir.

@@ -26,7 +26,8 @@ What that cannot protect: `claude setup-token` prints the token once, by
 design. If your terminal is being recorded or its scrollback is shared, the
 token is in it. Revoke and reissue if that happens.
 
-Nothing secret is ever committed. `config.env` is git-ignored; `cloud.env` and
+Never commit secrets. The repository is configured to ignore local credentials
+and instruction backups; review staged files before publishing. `config.env` is git-ignored; `cloud.env` and
 `state/cloud-state.env` are committed on purpose and contain only settings and
 timestamps.
 
@@ -45,7 +46,8 @@ gh secret delete CODEX_AUTH_JSON
 
 # 3. revoke the token itself, so it is dead even if a copy leaked
 #    Claude: https://claude.ai/settings  ->  revoke the Claude Code token
-#    Codex : log out with `codex logout`, which invalidates the stored session
+#    Codex: use account security/session controls to revoke access.
+#    `codex logout` removes local credentials; do not assume it revokes copied tokens.
 ```
 
 Step 3 is the one that actually matters. Steps 1 and 2 only stop *this*
@@ -56,19 +58,21 @@ logged in until you run `claude auth logout`.
 
 ## Noticing when something is wrong
 
-GitHub emails you when a scheduled workflow fails, and every run writes a
-summary showing when the current window ends. That is the alerting path - if
-pings stop, you hear about it.
+Check GitHub Actions and configure your workflow-failure notifications.
+Notification delivery depends on your GitHub settings. A green no-op run is
+not proof that the CLI works; inspect the Ping step and saved timestamps.
+Displayed window boundaries are estimates, not provider-reported reset times.
 
 Two guards limit the damage from a misconfiguration:
 
-- `INTERVAL_MINUTES` is floored at 60 in code, so a typo like `1` cannot turn
+- `INTERVAL_MINUTES` is floored at 300 in code, so a typo like `1` cannot turn
   the job into a loop that burns your quota.
 - Only keys the scripts actually define are read from a config file. A config
   cannot reassign `PATH`, the state file location, or any other internal.
 
-Actions minutes are free and unlimited on public repositories, so there is no
-spending risk to cap.
+Public repositories use standard GitHub-hosted runner allowances. Private
+repository overage costs depend on your plan and job durations. AI pings still
+consume subscription usage; enabled paid extra usage can have monetary costs.
 
 ## Hardening already applied
 
@@ -82,8 +86,17 @@ spending risk to cap.
   repointed at different code. Dependabot proposes updates monthly so the pins
   do not silently rot.
 - Log output is passed through a redactor that masks anything token-shaped
-  before it can reach a log file or a public Actions log.
-- Error messages are truncated and never include raw credential material.
+  before it can reach a log file or a public Actions log. This is a secondary
+  safeguard, not a promise to recognize every possible secret format.
+- Raw CLI error output is withheld rather than relying on token-pattern masking.
+- CLI versions are pinned in the cloud workflow; npm package publishers remain
+  part of the supply-chain trust boundary.
+- Claude runs in safe/restricted mode with tools disabled; Codex ignores user
+  configuration and project documents and uses read-only sandboxing. Managed
+  policies still apply.
+- Run locks prevent concurrent pings; each CLI has a bounded runtime.
+- The offline regression workflow never receives AI credentials and uses a
+  read-only GitHub token, including for pull requests.
 - `.sh` files are `text eol=lf` in `.gitattributes`, so a CRLF checkout cannot
   turn a script into something that fails open.
 

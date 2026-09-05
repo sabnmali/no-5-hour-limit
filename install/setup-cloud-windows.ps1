@@ -142,6 +142,7 @@ Say 'A browser window will open. Sign in and approve, then come back here.'
 Say ''
 
 & $claude.Source setup-token
+if ($LASTEXITCODE -ne 0) { Die 'Token setup failed.' }
 
 Say ''
 Say 'Copy the long token printed above (select it with the mouse, then Ctrl+C)'
@@ -202,7 +203,7 @@ Head 'Step 4 of 5 - opening your first window'
 # for the one this script is about to start.
 $before = @()
 try {
-    $before = (& $gh.Source run list --workflow keepalive.yml --limit 20 `
+    $before = (& $gh.Source run list --workflow keepalive.yml --event workflow_dispatch --limit 20 `
                   --json databaseId --repo $Repo 2>$null | ConvertFrom-Json).databaseId
 } catch { }
 
@@ -225,7 +226,7 @@ while ((Get-Date) -lt $deadline) {
     # that finished before this script even started.
     if (-not $runId) {
         try {
-            $listed = (& $gh.Source run list --workflow keepalive.yml --limit 20 `
+            $listed = (& $gh.Source run list --workflow keepalive.yml --event workflow_dispatch --limit 20 `
                           --json databaseId --repo $Repo 2>$null | ConvertFrom-Json).databaseId
         } catch { $listed = @() }
         $runId = $listed | Where-Object { $before -notcontains $_ } | Select-Object -First 1
@@ -239,7 +240,7 @@ while ((Get-Date) -lt $deadline) {
     if ($run.status -eq 'completed') {
         Write-Host ''
         if ($run.conclusion -eq 'success') {
-            Ok 'It works. A fresh 5-hour window is open and it will keep renewing itself.'
+            Ok 'Workflow completed. Check its Ping step for actual provider success; reset times are estimates.'
             Write-Host ''
             Say "Details: https://github.com/$Repo/actions/runs/$runId"
             Write-Host ''
@@ -256,5 +257,7 @@ while ((Get-Date) -lt $deadline) {
 }
 
 Write-Host ''
-Warn 'Still running after 3 minutes. It is probably fine - check here in a moment:'
+Warn 'Verification timed out after 3 minutes; outcome unknown. Check:'
 Say  "https://github.com/$Repo/actions"
+
+exit 1

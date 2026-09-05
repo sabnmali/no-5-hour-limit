@@ -189,6 +189,7 @@ Write-Host ''
 Write-Step 'verifying the task can reach the CLIs...'
 
 $logFile = Join-Path $RepoRoot ("logs\keepalive-{0}.log" -f (Get-Date -Format 'yyyy-MM'))
+$startedAt = Get-Date
 $before = 0
 if (Test-Path -LiteralPath $logFile) { $before = @(Get-Content -LiteralPath $logFile).Count }
 
@@ -199,12 +200,19 @@ while ((Get-Date) -lt $deadline) {
     Start-Sleep -Seconds 2
     if (Test-Path -LiteralPath $logFile) {
         $all = @(Get-Content -LiteralPath $logFile)
-        if ($all.Count -gt $before) { $newLines = $all[$before..($all.Count - 1)]; break }
+        if ($all.Count -gt $before) { $newLines = $all[$before..($all.Count - 1)] }
     }
+    $taskNow = Get-ScheduledTask -TaskName $TaskName
+    $taskInfo = Get-ScheduledTaskInfo -TaskName $TaskName
+    if ($taskNow.State -ne 'Running' -and $taskInfo.LastRunTime -ge $startedAt.AddSeconds(-2)) { break }
 }
 
-if ($newLines.Count -eq 0) {
-    Write-Warn 'the task produced no log output within 60s - check Task Scheduler history'
+if ($taskNow.State -eq 'Running') {
+    Write-Warn 'Verification still running; inspect Task Scheduler and the log when it finishes.'
+} elseif ($taskInfo.LastTaskResult -ne 0) {
+    Write-Warn "Task failed with exit $($taskInfo.LastTaskResult); check the log and CLI login."
+} elseif ($newLines.Count -eq 0) {
+    Write-Ok 'task completed without a new ping (not due or providers disabled); this does not verify CLI access'
 } elseif ($newLines -match 'not found') {
     Write-Warn 'the scheduled task cannot see your CLI, even though this shell can.'
     Write-Host  '      Fix it with the CLI setup helper, then re-run this installer:' -ForegroundColor Yellow
@@ -241,10 +249,10 @@ Write-Host '  ----------'
 if ($script:Verified) {
     # It already pinged during the check above; a second one would just spend
     # quota for nothing.
-    Write-Host '   Nothing - a window is already open and the task will keep it that way.'
+    Write-Host '   Nothing - the ping succeeded; future checks follow config.env.'
 } else {
     Write-Host '   1. If the check above said "NOT logged in", run:  claude auth login'
-    Write-Host '   2. Then open the first window:'
+    Write-Host '   2. Check status first; use -Force only if an immediate ping is needed:'
     Write-Host ('        powershell -ExecutionPolicy Bypass -File "{0}" -Force' -f $Keepalive)
 }
 Write-Host '   Check on it any time:'
