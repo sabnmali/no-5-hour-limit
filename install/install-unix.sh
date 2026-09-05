@@ -50,8 +50,25 @@ else
     ok "config.env already exists - leaving it alone"
 fi
 
-# --- 2. dependencies -------------------------------------------------------
+# --- 2. dependencies + pin the absolute CLI paths into config.env ----------
+# cron and launchd run with a stripped-down PATH, so "claude" alone is often
+# not resolvable there. Record the full path now.
+set_config_value() {
+    local key="$1" value="$2" cfg="$REPO_ROOT/config.env" tmp
+    tmp="$(mktemp)"
+    if grep -qE "^[[:space:]]*$key[[:space:]]*=" "$cfg"; then
+        awk -v k="$key" -v v="$value" \
+            '{ if ($0 ~ "^[[:space:]]*"k"[[:space:]]*=") print k"="v; else print }' \
+            "$cfg" > "$tmp"
+    else
+        cat "$cfg" > "$tmp"
+        printf '%s=%s\n' "$key" "$value" >> "$tmp"
+    fi
+    mv "$tmp" "$cfg"
+}
+
 if command -v claude >/dev/null 2>&1; then
+    set_config_value CLAUDE_BIN "$(command -v claude)"
     ok "claude CLI found: $(command -v claude)"
     if claude auth status 2>/dev/null | grep -q '"loggedIn"[[:space:]]*:[[:space:]]*true'; then
         ok "claude CLI is logged in"
@@ -65,6 +82,7 @@ else
 fi
 
 if command -v codex >/dev/null 2>&1; then
+    set_config_value CODEX_BIN "$(command -v codex)"
     ok "codex CLI found: $(command -v codex)"
 else
     step "codex CLI not found (only needed if you enable CODEX_ENABLED)"

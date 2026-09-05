@@ -80,6 +80,14 @@ claude auth login       # the CLI needs its own login, separate from the desktop
 codex login             # only if you enable Codex
 ```
 
+On Windows there is a helper that does the login *and* makes sure the CLI sits
+somewhere the Task Scheduler can actually reach - run it in a normal PowerShell
+window:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
+```
+
 ### Start the first window
 
 ```bash
@@ -136,8 +144,10 @@ take effect on the next tick; nothing to restart.
 | `CLAUDE_ENABLED` | `true` | Keep the Claude window rolling. |
 | `CLAUDE_MODEL` | `haiku` | Model used for the ping. Cheapest is best. |
 | `CLAUDE_PROMPT` | `ok` | The ping text. Keep it short. |
+| `CLAUDE_BIN` | *(filled in by the installer)* | Absolute path to `claude`. Needed because schedulers run with a stripped-down `PATH`. |
 | `CODEX_ENABLED` | `false` | Set to `true` to keep the Codex window rolling too. |
 | `CODEX_MODEL` | *(empty)* | Empty = whatever your Codex config defaults to. |
+| `CODEX_BIN` | *(filled in by the installer)* | Absolute path to `codex`. |
 | `CODEX_REASONING_EFFORT` | `minimal` | Keeps the Codex ping cheap. |
 | `LOG_RETENTION_DAYS` | `30` | Delete logs older than this. `0` = keep forever. |
 | `QUIET_HOURS` | *(empty)* | e.g. `02:00-08:00` to skip pings overnight. Empty = true 24/7. |
@@ -200,6 +210,7 @@ claude -p "ok" --model haiku
 bin/keepalive.ps1          Windows: the whole thing (ping, state, status)
 bin/keepalive.sh           macOS/Linux: same
 install/install-*.{ps1,sh} Register the scheduler + install the skill
+install/setup-cli-windows.ps1  Windows: native CLI install + login + re-register
 install/uninstall-*        Remove the scheduler (keeps config and logs)
 skill/limitless-5-hour/    Claude Code skill: ask about your window in chat
 config.example.env         Template for config.env
@@ -214,6 +225,28 @@ state/                     Last-ping timestamps
 **`not logged in - run: claude auth login`**
 The CLI keeps its own credentials, separate from the Claude desktop app. Run
 `claude auth login` once in a terminal.
+
+**The background task does nothing, but running it by hand works**
+
+The Task Scheduler service launches processes with a different environment -
+and on some Windows machines a different view of `%APPDATA%` - than your
+interactive shell. A `claude` installed through npm lives in `%APPDATA%\npm`,
+which the scheduler may not be able to see, so the log fills with
+`claude CLI not found`.
+
+The installer detects this and tells you. The fix is to switch to the native
+build, which installs under your user folder where the scheduler can reach it:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
+```
+
+That installs the native build, logs the CLI in, and re-registers the task.
+On any platform you can also point at the binary yourself in `config.env`:
+
+```
+CLAUDE_BIN=C:\Users\you\.local\bin\claude.exe
+```
 
 **Nothing in the logs**
 Check the scheduler row in `-Status` / `--status`. On Windows, look for

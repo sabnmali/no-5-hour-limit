@@ -57,10 +57,25 @@ if (-not (Test-Path -LiteralPath $ConfigDst)) {
 }
 
 # --------------------------------------------------------------------------
-# 2. Dependency check
+# 2. Dependency check - and pin the absolute CLI paths into config.env
 # --------------------------------------------------------------------------
+# Task Scheduler runs with a different PATH than an interactive shell, so
+# "claude" alone is often not resolvable there. Record the full path now.
+function Set-ConfigValue {
+    param([string] $Key, [string] $Value)
+    $lines = @(Get-Content -LiteralPath $ConfigDst)
+    $pattern = '^\s*' + [regex]::Escape($Key) + '\s*='
+    $found = $false
+    $out = foreach ($l in $lines) {
+        if ($l -match $pattern) { $found = $true; "$Key=$Value" } else { $l }
+    }
+    if (-not $found) { $out = @($out) + "$Key=$Value" }
+    Set-Content -LiteralPath $ConfigDst -Value $out -Encoding UTF8
+}
+
 $claudeCmd = Get-Command claude -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($claudeCmd) {
+    Set-ConfigValue -Key 'CLAUDE_BIN' -Value $claudeCmd.Source
     Write-Ok "claude CLI found: $($claudeCmd.Source)"
     $authRaw = ''
     try { $authRaw = (& $claudeCmd.Source auth status 2>&1 | Out-String) } catch { }
@@ -77,6 +92,7 @@ if ($claudeCmd) {
 
 $codexCmd = Get-Command codex -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
 if ($codexCmd) {
+    Set-ConfigValue -Key 'CODEX_BIN' -Value $codexCmd.Source
     Write-Ok "codex CLI found: $($codexCmd.Source)"
 } else {
     Write-Step 'codex CLI not found (only needed if you enable CODEX_ENABLED)'
@@ -162,7 +178,50 @@ Register-ScheduledTask `
 Write-Ok ("scheduled task '{0}' registered - checks every {1} minute(s)" -f $TaskName, $CheckMinutes)
 
 # --------------------------------------------------------------------------
-# 5. Done
+# 5. Verify end-to-end
+# --------------------------------------------------------------------------
+# The Task Scheduler service launches processes with a different environment -
+# and, on some machines, a different view of the user profile - than an
+# interactive shell. A CLI that resolves fine here can be invisible there, so
+# actually run the task once and read what it wrote.
+Write-Host ''
+Write-Step 'verifying the task can reach the CLIs...'
+
+$logFile = Join-Path $RepoRoot ("logs\keepalive-{0}.log" -f (Get-Date -Format 'yyyy-MM'))
+$before = 0
+if (Test-Path -LiteralPath $logFile) { $before = @(Get-Content -LiteralPath $logFile).Count }
+
+Start-ScheduledTask -TaskName $TaskName
+$deadline = (Get-Date).AddSeconds(60)
+$newLines = @()
+while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds 2
+    if (Test-Path -LiteralPath $logFile) {
+        $all = @(Get-Content -LiteralPath $logFile)
+        if ($all.Count -gt $before) { $newLines = $all[$before..($all.Count - 1)]; break }
+    }
+}
+
+if ($newLines.Count -eq 0) {
+    Write-Warn 'the task produced no log output within 60s - check Task Scheduler history'
+} elseif ($newLines -match 'not found') {
+    Write-Warn 'the scheduled task cannot see your CLI, even though this shell can.'
+    Write-Host  '      Fix it with the CLI setup helper, then re-run this installer:' -ForegroundColor Yellow
+    Write-Host  ('        powershell -ExecutionPolicy Bypass -File "{0}"' -f (Join-Path $PSScriptRoot 'setup-cli-windows.ps1')) -ForegroundColor White
+    $newLines | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
+} elseif ($newLines -match 'not logged in') {
+    Write-Warn 'the task reached the CLI, but it is not logged in yet. Run:'
+    Write-Host  '        claude auth login' -ForegroundColor White
+} elseif ($newLines -match 'ERROR') {
+    Write-Warn 'the task ran but reported an error:'
+    $newLines | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
+} else {
+    Write-Ok 'verified - the scheduled task pinged successfully'
+    $newLines | ForEach-Object { Write-Host "      $_" -ForegroundColor DarkGray }
+}
+
+# --------------------------------------------------------------------------
+# 6. Done
 # --------------------------------------------------------------------------
 Write-Host ''
 Write-Host '  Installed.' -ForegroundColor Green

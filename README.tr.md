@@ -83,6 +83,14 @@ claude auth login       # CLI'ın kendi girişi var, masaüstü uygulamasından 
 codex login             # sadece Codex'i açacaksan
 ```
 
+Windows'ta hem girişi yapan hem de CLI'ı Görev Zamanlayıcı'nın gerçekten
+erişebileceği bir yere kuran bir yardımcı var. Normal bir PowerShell
+penceresinde çalıştır:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
+```
+
 ### İlk pencereyi başlat
 
 ```bash
@@ -138,8 +146,10 @@ gerek yok.
 | `CLAUDE_ENABLED` | `true` | Claude penceresini döndür. |
 | `CLAUDE_MODEL` | `haiku` | Gönderimde kullanılan model. En ucuzu en iyisi. |
 | `CLAUDE_PROMPT` | `ok` | Gönderilecek metin. Kısa tut. |
+| `CLAUDE_BIN` | *(kurulumda dolar)* | `claude` komutunun tam yolu. Zamanlayıcılar dar bir `PATH` ile çalıştığı için gerekli. |
 | `CODEX_ENABLED` | `false` | `true` yaparsan Codex penceresi de dönmeye başlar. |
 | `CODEX_MODEL` | *(boş)* | Boş = Codex ayarındaki varsayılan model. |
+| `CODEX_BIN` | *(kurulumda dolar)* | `codex` komutunun tam yolu. |
 | `CODEX_REASONING_EFFORT` | `minimal` | Codex gönderimini ucuz tutar. |
 | `LOG_RETENTION_DAYS` | `30` | Bundan eski kayıtları siler. `0` = hiç silme. |
 | `QUIET_HOURS` | *(boş)* | Örn. `02:00-08:00` — gece göndermez. Boş = tam 7/24. |
@@ -202,6 +212,7 @@ claude -p "ok" --model haiku
 bin/keepalive.ps1          Windows: her şey burada (gönderim, durum, kayıt)
 bin/keepalive.sh           macOS/Linux: aynısı
 install/install-*.{ps1,sh} Zamanlayıcıyı ve beceriyi kurar
+install/setup-cli-windows.ps1  Windows: yerel CLI kurulumu + giriş + yeniden kayıt
 install/uninstall-*        Zamanlayıcıyı kaldırır (ayar ve kayıtlar kalır)
 skill/limitless-5-hour/    Claude Code becerisi: sohbette limitini sorabilirsin
 config.example.env         config.env için şablon
@@ -216,6 +227,27 @@ state/                     Son gönderim zamanları
 **`not logged in - run: claude auth login`**
 CLI'ın kimlik bilgileri masaüstü uygulamasından ayrı. Terminalde bir kez
 `claude auth login` çalıştır.
+
+**Arka plan görevi hiçbir şey yapmıyor ama elle çalıştırınca çalışıyor**
+
+Görev Zamanlayıcı servisi, programları senin terminalinden farklı bir ortamla
+başlatır - bazı Windows makinelerinde `%APPDATA%` görünümü bile farklıdır.
+npm ile kurulan `claude`, `%APPDATA%\npm` içinde durur ve zamanlayıcı orayı
+göremeyebilir; kayıtlar `claude CLI not found` ile dolar.
+
+Kurulum bunu kendisi tespit edip söylüyor. Çözüm, kullanıcı klasörüne kurulan
+ve zamanlayıcının erişebildiği yerel (native) sürüme geçmek:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\setup-cli-windows.ps1
+```
+
+Bu komut yerel sürümü kurar, girişi yapar ve görevi yeniden kaydeder.
+İstersen her platformda yolu `config.env` içinde kendin de verebilirsin:
+
+```
+CLAUDE_BIN=C:\Users\kullanici\.local\bin\claude.exe
+```
 
 **Kayıtlarda hiçbir şey yok**
 `-Status` / `--status` çıktısındaki `scheduler` satırına bak. Windows'ta Görev

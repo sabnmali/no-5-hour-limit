@@ -62,9 +62,11 @@ $Config = @{
     CLAUDE_ENABLED         = 'true'
     CLAUDE_MODEL           = 'haiku'
     CLAUDE_PROMPT          = 'ok'
+    CLAUDE_BIN             = ''
     CODEX_ENABLED          = 'false'
     CODEX_MODEL            = ''
     CODEX_PROMPT           = 'ok'
+    CODEX_BIN              = ''
     CODEX_REASONING_EFFORT = 'minimal'
     LOG_RETENTION_DAYS     = '30'
     QUIET_HOURS            = ''
@@ -183,16 +185,40 @@ function Test-QuietHours {
 # Providers
 # --------------------------------------------------------------------------
 function Resolve-Cli([string] $Name) {
+    # 1. An explicit path from config.env always wins. Task Scheduler runs with
+    #    a different PATH than an interactive shell, so this is the reliable
+    #    route and the installer fills it in.
+    $configured = Get-Cfg ('{0}_BIN' -f $Name.ToUpperInvariant())
+    if ((-not [string]::IsNullOrWhiteSpace($configured)) -and (Test-Path -LiteralPath $configured)) {
+        return $configured
+    }
+
+    # 2. PATH.
     $cmd = Get-Command $Name -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1
     if ($cmd) { return $cmd.Source }
+
+    # 3. The usual install locations.
+    $candidates = @(
+        (Join-Path $env:APPDATA          ('npm\{0}.cmd'  -f $Name)),
+        (Join-Path $env:APPDATA          ('npm\{0}.ps1'  -f $Name)),
+        (Join-Path $env:LOCALAPPDATA     ('{0}\bin\{0}.exe' -f $Name)),
+        (Join-Path $env:USERPROFILE      ('bin\{0}.cmd'  -f $Name)),
+        (Join-Path $env:USERPROFILE      ('bin\{0}.exe'  -f $Name)),
+        (Join-Path $env:USERPROFILE      ('.local\bin\{0}.exe' -f $Name)),
+        (Join-Path $env:ProgramFiles     ('nodejs\{0}.cmd' -f $Name))
+    )
+    foreach ($c in $candidates) {
+        if ($c -and (Test-Path -LiteralPath $c)) { return $c }
+    }
+
     return $null
 }
 
 function Invoke-ClaudePing {
     $exe = Resolve-Cli 'claude'
     if (-not $exe) {
-        return @{ ok = $false; message = 'claude CLI not found on PATH (npm i -g @anthropic-ai/claude-code)' }
+        return @{ ok = $false; message = 'claude CLI not found - set CLAUDE_BIN in config.env, or run install\setup-cli-windows.ps1' }
     }
 
     $cliArgs = @(
@@ -252,7 +278,7 @@ function Invoke-ClaudePing {
 function Invoke-CodexPing {
     $exe = Resolve-Cli 'codex'
     if (-not $exe) {
-        return @{ ok = $false; message = 'codex CLI not found on PATH (npm i -g @openai/codex)' }
+        return @{ ok = $false; message = 'codex CLI not found - set CODEX_BIN in config.env, or npm i -g @openai/codex' }
     }
 
     $cliArgs = @('exec', '--skip-git-repo-check', '--ephemeral', '-s', 'read-only', '-C', $WorkDir)

@@ -49,9 +49,11 @@ INTERVAL_MINUTES=301
 CLAUDE_ENABLED=true
 CLAUDE_MODEL=haiku
 CLAUDE_PROMPT=ok
+CLAUDE_BIN=
 CODEX_ENABLED=false
 CODEX_MODEL=
 CODEX_PROMPT=ok
+CODEX_BIN=
 CODEX_REASONING_EFFORT=minimal
 LOG_RETENTION_DAYS=30
 QUIET_HOURS=
@@ -159,10 +161,37 @@ in_quiet_hours() {
 # ---------------------------------------------------------------------------
 PING_MESSAGE=''
 
+# resolve_cli <name> -> echoes an absolute path, or nothing.
+# Schedulers (cron, launchd) run with a stripped-down PATH, so an explicit path
+# from config.env wins; the installer fills it in.
+resolve_cli() {
+    local name="$1" configured="" var candidate
+    var="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')_BIN"
+    configured="${!var:-}"
+
+    if [ -n "$configured" ] && [ -x "$configured" ]; then
+        printf '%s' "$configured"; return 0
+    fi
+    if command -v "$name" >/dev/null 2>&1; then
+        command -v "$name"; return 0
+    fi
+    for candidate in "$HOME/.local/bin/$name" \
+                     "$HOME/bin/$name" \
+                     "$HOME/.npm-global/bin/$name" \
+                     "/usr/local/bin/$name" \
+                     "/opt/homebrew/bin/$name" \
+                     "/usr/bin/$name"
+    do
+        [ -x "$candidate" ] && { printf '%s' "$candidate"; return 0; }
+    done
+    return 1
+}
+
 ping_claude() {
     PING_MESSAGE=''
-    if ! command -v claude >/dev/null 2>&1; then
-        PING_MESSAGE='claude CLI not found on PATH (npm i -g @anthropic-ai/claude-code)'
+    local exe
+    if ! exe="$(resolve_cli claude)"; then
+        PING_MESSAGE='claude CLI not found (set CLAUDE_BIN in config.env, or npm i -g @anthropic-ai/claude-code)'
         return 1
     fi
 
@@ -183,7 +212,7 @@ ping_claude() {
     fi
 
     local out
-    out="$(cd "$WORK_DIR" && claude "${args[@]}" 2>&1)"
+    out="$(cd "$WORK_DIR" && "$exe" "${args[@]}" 2>&1)"
 
     if printf '%s' "$out" | grep -qi 'not logged in'; then
         PING_MESSAGE='not logged in - run: claude auth login'
@@ -204,8 +233,9 @@ ping_claude() {
 
 ping_codex() {
     PING_MESSAGE=''
-    if ! command -v codex >/dev/null 2>&1; then
-        PING_MESSAGE='codex CLI not found on PATH (npm i -g @openai/codex)'
+    local exe
+    if ! exe="$(resolve_cli codex)"; then
+        PING_MESSAGE='codex CLI not found (set CODEX_BIN in config.env, or npm i -g @openai/codex)'
         return 1
     fi
 
@@ -220,7 +250,7 @@ ping_codex() {
     fi
 
     local out
-    out="$(codex "${args[@]}" 2>&1)"
+    out="$("$exe" "${args[@]}" 2>&1)"
 
     if printf '%s' "$out" | grep -qi 'usage limit'; then
         PING_MESSAGE='usage limit reached - will retry next cycle'
