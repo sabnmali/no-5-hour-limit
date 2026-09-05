@@ -345,12 +345,22 @@ show_status() {
     done
 
     echo
-    if crontab -l 2>/dev/null | grep -q 'keepalive.sh'; then
-        echo "  scheduler    : cron entry found"
-        crontab -l 2>/dev/null | grep 'keepalive.sh' | sed 's/^/     /'
-    else
-        echo "  scheduler    : NOT INSTALLED - run install/install-unix.sh"
-    fi
+    # When driven from cloud.env / the cloud state file, the local cron entry is
+    # not the thing running this - saying "NOT INSTALLED" there is just wrong.
+    case "$CONFIG_PATH$STATE_FILE" in
+        *cloud*)
+            echo "  scheduler    : GitHub Actions (.github/workflows/keepalive.yml)"
+            echo "     check runs  gh run list --workflow keepalive.yml"
+            ;;
+        *)
+            if crontab -l 2>/dev/null | grep -q 'keepalive.sh'; then
+                echo "  scheduler    : cron entry found"
+                crontab -l 2>/dev/null | grep 'keepalive.sh' | sed 's/^/     /'
+            else
+                echo "  scheduler    : NOT INSTALLED - run install/install-unix.sh"
+            fi
+            ;;
+    esac
     echo "  log file     : $LOG_FILE"
     echo
 }

@@ -1,5 +1,8 @@
 # Instructions for an AI coding agent
 
+<!-- CLAUDE.md and AGENTS.md are kept identical on purpose: different
+     tools look for different filenames. Edit one, mirror the other. -->
+
 This file is for an assistant (Codex, Claude Code, or similar) that has been
 pointed at this repository and asked to set it up for its user. Read
 [README.md](README.md) for the full picture; this is the short operational

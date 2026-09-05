@@ -387,6 +387,15 @@ function Show-Status {
     }
 
     Write-Host ''
+    # When driven from cloud.env, the local task is not what is running this.
+    if ($ConfigPath -match 'cloud' -or $StateFile -match 'cloud') {
+        Write-Host '  scheduler    : GitHub Actions (.github/workflows/keepalive.yml)' -ForegroundColor Green
+        Write-Host '     check runs  gh run list --workflow keepalive.yml'
+        Write-Host ("  log file     : {0}" -f $LogFile)
+        Write-Host ''
+        return
+    }
+
     $task = Get-ScheduledTask -TaskName 'No5HourLimit' -ErrorAction SilentlyContinue
     if ($task) {
         Write-Host ("  scheduler    : installed, state = {0}" -f $task.State) -ForegroundColor Green
