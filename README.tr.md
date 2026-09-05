@@ -189,6 +189,23 @@ Her gönderim, pencerenin ne zaman biteceğini gösteren bir özet yazıyor;
 - **Codex'in yenileme token'ları döner.** Codex gönderimleri bir gün hata
   vermeye başlarsa `~/.codex/auth.json` dosyasını anahtara yeniden kopyala.
 
+### Tamamen kapatmak
+
+İş akışını durdurmak ping'leri keser ama anahtarı canlı bırakır. Erişimi
+tamamen kesmek için:
+
+```bash
+gh workflow disable keepalive.yml
+gh secret delete CLAUDE_CODE_OAUTH_TOKEN
+# sonra anahtarın kendisini iptal et: https://claude.ai/settings
+```
+
+[SECURITY.md](SECURITY.md) dosyasında anahtarların nerede durduğu, iş akışının
+neye yetkili olduğu ve yanlış bir ayarın kotanı yakmasını engelleyen korumalar
+anlatılıyor.
+
+---
+
 ### Bulut mu, yerel mi?
 
 Birini seç. İkisini birden çalıştırmak, aynı hesaba iki ayrı zamanlamanın

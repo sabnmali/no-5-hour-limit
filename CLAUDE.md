@@ -100,19 +100,6 @@ gh run list --workflow keepalive.yml -L 5
 immediately. Warn before `--force`: it burns whatever window is currently open
 and starts a new one.
 
-## Security expectations
-
-[SECURITY.md](SECURITY.md) is the reference. The parts you must not undo:
-
-- Keep the workflow's triggers to `schedule` and `workflow_dispatch`. Adding
-  `pull_request` would let a fork run it.
-- Keep `permissions:` at `contents: write` and nothing more.
-- Keep third-party actions pinned to commit SHAs.
-- Keep the config-key allowlists in both keepalive scripts. They are what stops
-  a config file from reassigning `PATH` or the state file location.
-- Keep the log redactor. Cloud logs are public on a public repository.
-- Never widen `INTERVAL_MINUTES` below its 60-minute floor.
-
 ## Things that will bite you
 
 - **Schedulers do not inherit your shell's PATH.** That is what `CLAUDE_BIN` /

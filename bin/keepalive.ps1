@@ -82,7 +82,10 @@ if (Test-Path -LiteralPath $ConfigPath) {
         if ($idx -lt 1) { continue }
         $key = $trimmed.Substring(0, $idx).Trim()
         $val = $trimmed.Substring($idx + 1).Trim().Trim('"').Trim("'")
-        $Config[$key] = $val
+        # $Config was seeded above with every key this script understands, so
+        # this doubles as an allowlist: an unknown key is ignored rather than
+        # smuggled in.
+        if ($Config.ContainsKey($key)) { $Config[$key] = $val }
     }
 }
 
@@ -100,14 +103,27 @@ $parsed = 0
 if ([int]::TryParse((Get-Cfg 'INTERVAL_MINUTES'), [ref] $parsed) -and $parsed -ge 1) {
     $IntervalMinutes = $parsed
 }
+# A window lasts 300 minutes, so anything under that pings inside a live window
+# and buys nothing. 60 is a hard stop against a typo turning this into a
+# quota-burning loop.
+if ($IntervalMinutes -lt 60) { $IntervalMinutes = 60 }
 
 # --------------------------------------------------------------------------
 # Logging
 # --------------------------------------------------------------------------
 $LogFile = Join-Path $LogDir ("keepalive-{0}.log" -f (Get-Date -Format 'yyyy-MM'))
 
+function Protect-Secrets {
+    # Error text can quote a credential back at us. Mask anything token-shaped
+    # before it reaches a log file or a screen.
+    param([string] $Text)
+    if ([string]::IsNullOrEmpty($Text)) { return $Text }
+    return ([regex]::Replace($Text, '[A-Za-z0-9_-]{24,}', '[redacted]'))
+}
+
 function Write-Log {
     param([string] $Level, [string] $Message)
+    $Message = Protect-Secrets $Message
     $stamp = (Get-Date).ToString('yyyy-MM-dd HH:mm:ss zzz')
     $line = "[{0}] {1,-5} {2}" -f $stamp, $Level.ToUpperInvariant(), $Message
     try { Add-Content -LiteralPath $LogFile -Value $line -Encoding UTF8 } catch { }
@@ -250,7 +266,7 @@ function Invoke-ClaudePing {
     try { $json = $raw | ConvertFrom-Json } catch { }
 
     if ($null -eq $json) {
-        $flat = ($raw -replace '\s+', ' ').Trim()
+        $flat = (Protect-Secrets (($raw -replace '\s+', ' ').Trim()))
         if ($flat.Length -gt 300) { $flat = $flat.Substring(0, 300) + '...' }
         return @{ ok = $false; message = "unreadable claude output: $flat" }
     }

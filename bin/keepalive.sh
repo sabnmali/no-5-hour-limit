@@ -66,9 +66,17 @@ CODEX_REASONING_EFFORT=minimal
 LOG_RETENTION_DAYS=30
 QUIET_HOURS=
 
+# Keys a file is allowed to set. Everything else is ignored, so a tampered or
+# careless config cannot reach into the script and reassign PATH, STATE_FILE,
+# DO_FORCE or anything else it was never meant to touch.
+CONFIG_KEYS="INTERVAL_MINUTES CLAUDE_ENABLED CLAUDE_MODEL CLAUDE_PROMPT CLAUDE_BIN
+CODEX_ENABLED CODEX_MODEL CODEX_PROMPT CODEX_BIN CODEX_REASONING_EFFORT
+LOG_RETENTION_DAYS QUIET_HOURS"
+STATE_KEYS="CLAUDE_LAST CODEX_LAST"
+
 load_kv_file() {
-    # Reads KEY=VALUE lines without executing the file.
-    local file="$1" line key val
+    # Reads KEY=VALUE lines without executing the file. $2 is the allowlist.
+    local file="$1" allowed="$2" line key val
     [ -f "$file" ] || return 0
     while IFS= read -r line || [ -n "$line" ]; do
         line="${line%$'\r'}"
@@ -81,18 +89,23 @@ load_kv_file() {
         val="${val%"${val##*[![:space:]]}"}"
         val="${val%\"}"; val="${val#\"}"
         val="${val%\'}"; val="${val#\'}"
-        case "$key" in
-            [A-Za-z_][A-Za-z0-9_]*) printf -v "$key" '%s' "$val" ;;
+        case " $(printf '%s' "$allowed" | tr '
+' ' ') " in
+            *" $key "*) printf -v "$key" '%s' "$val" ;;
         esac
     done < "$file"
 }
 
-load_kv_file "$CONFIG_PATH"
+load_kv_file "$CONFIG_PATH" "$CONFIG_KEYS"
 
 case "$INTERVAL_MINUTES" in
     ''|*[!0-9]*) INTERVAL_MINUTES=301 ;;
 esac
 [ "$INTERVAL_MINUTES" -ge 1 ] 2>/dev/null || INTERVAL_MINUTES=301
+# Floor: a window lasts 300 minutes, so anything under that pings inside a live
+# window and buys nothing. 60 is a hard stop against a typo turning this into a
+# quota-burning loop.
+[ "$INTERVAL_MINUTES" -ge 60 ] || INTERVAL_MINUTES=60
 
 is_true() {
     case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
@@ -126,7 +139,7 @@ prune_logs() {
 # ---------------------------------------------------------------------------
 CLAUDE_LAST=0
 CODEX_LAST=0
-load_kv_file "$STATE_FILE"
+load_kv_file "$STATE_FILE" "$STATE_KEYS"
 case "$CLAUDE_LAST" in ''|*[!0-9]*) CLAUDE_LAST=0 ;; esac
 case "$CODEX_LAST"  in ''|*[!0-9]*) CODEX_LAST=0  ;; esac
 
@@ -168,6 +181,11 @@ in_quiet_hours() {
 # Providers
 # ---------------------------------------------------------------------------
 PING_MESSAGE=''
+
+# Cloud runs publish their logs publicly, so raw CLI output must never be
+# echoed verbatim. GitHub masks the secret it injected; this also catches
+# anything else token-shaped, such as a value quoted back in an error.
+redact() { sed -E 's/[A-Za-z0-9_-]{24,}/[redacted]/g'; }
 
 # resolve_cli <name> -> echoes an absolute path, or nothing.
 # Schedulers (cron, launchd) run with a stripped-down PATH, so an explicit path
@@ -269,7 +287,7 @@ ping_codex() {
         return 1
     fi
     if printf '%s' "$out" | grep -qi '^ERROR:'; then
-        PING_MESSAGE="error: $(printf '%s' "$out" | grep -i '^ERROR:' | head -1 | cut -c1-200)"
+        PING_MESSAGE="error: $(printf '%s' "$out" | grep -i '^ERROR:' | head -1 | redact | cut -c1-200)"
         return 1
     fi
 

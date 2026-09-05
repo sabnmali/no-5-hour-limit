@@ -186,6 +186,22 @@ up. Every ping writes a summary showing when the current window ends, and
 - **Codex refresh tokens rotate.** If Codex pings start failing, copy
   `~/.codex/auth.json` into the secret again.
 
+### Turning it off, properly
+
+Disabling the workflow stops the pings but leaves the credential alive. To cut
+access completely:
+
+```bash
+gh workflow disable keepalive.yml
+gh secret delete CLAUDE_CODE_OAUTH_TOKEN
+# then revoke the token itself at https://claude.ai/settings
+```
+
+[SECURITY.md](SECURITY.md) covers where credentials live, what the workflow is
+allowed to do, and the guards against a misconfiguration burning your quota.
+
+---
+
 ### Cloud or local?
 
 Pick one. Running both means two independent schedules pinging the same

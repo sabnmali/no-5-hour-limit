@@ -45,7 +45,9 @@ jobs:
 
     steps:
       - name: Check out
-        uses: actions/checkout@v4
+        # Pinned to a commit, not a tag: a tag can be moved to point at
+        # different code, and this job holds a token for the user's subscription.
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Shallow: most runs do nothing, and this repo's history grows by a
           # commit per ping. The save step deepens it only if a push is
@@ -73,7 +75,7 @@ jobs:
 
       - name: Set up Node
         if: success() && steps.due.outputs.due == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '22'
 
