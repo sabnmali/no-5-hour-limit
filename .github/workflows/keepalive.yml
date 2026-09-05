@@ -114,10 +114,16 @@ jobs:
           fi
 
           args=(--config cloud.env)
-          [ "${FORCE:-false}" = "true" ] && args+=(--force)
+          if [ "${FORCE:-false}" = "true" ]; then
+            args+=(--force)
+          fi
 
+          # GitHub runs step shells with -e, so capture the exit code instead
+          # of letting a failed ping abort before the summary is written.
+          set +e
           L5H_STATE_FILE=state/cloud-state.env bash bin/keepalive.sh "${args[@]}"
           rc=$?
+          set -e
 
           {
             echo "### Limitless 5-Hour"
