@@ -1,0 +1,254 @@
+# Limitless 5-Hour
+
+**Claude ve ChatGPT/Codex'in 5 saatlik kullanım pencerelerini senin belirlediğin
+saatlere oturt.**
+
+[English README](README.md)
+
+---
+
+## Sorun
+
+Claude Code ve Codex, kullanımı **kayan 5 saatlik pencereler** halinde sayar.
+Sayaç, günün sabit bir saatinde değil, **ilk mesajını attığın anda** başlar.
+Yani sabah 09:40'ta tek bir kısa soru sorup 13:00'te geri dönersen, hiç
+kullanmadığın bir pencerenin dört saatini yakmış olursun — ve yeni pencere
+14:40'tan önce açılmaz.
+
+## Bu proje ne yapıyor
+
+Arka planda çalışan küçük bir görev, her **301 dakikada** (5 saat + 1 dakika)
+bir CLI'a tek kelimelik bir mesaj gönderiyor. Her mesaj, bir önceki pencere
+kapandığı anda yenisini açıyor. Sonuç:
+
+- pencereler 7/24 uç uca diziliyor
+- mevcut pencerenin ne zaman bittiğini, yenisinin ne zaman başladığını her an
+  biliyorsun
+- iki saniyelik bir soru yüzünden koca bir pencere yanmıyor
+
+Mesaj **en ucuz modelde** (varsayılan: Haiku) gönderiliyor; sistem talimatı altı
+kelimeye indiriliyor ve bütün araçlar kapatılıyor. Yani kotandan pratikte
+ölçülemeyecek kadar az yiyor.
+
+## Ne değil
+
+Bu proje limitini **yükseltmiyor**, hiçbir şeyi atlatmıyor, sana fazladan kota
+vermiyor. Sadece pencere sınırlarının istediğin yere denk gelmesini sağlıyor.
+Kendi aboneliğini, resmî CLI üzerinden, sanki `ok` yazmışsın gibi kullanıyor.
+
+---
+
+## Gerekenler
+
+| | |
+|---|---|
+| **Claude** | [Claude Code CLI](https://claude.com/claude-code) + Claude aboneliği |
+| **Codex** *(isteğe bağlı)* | [Codex CLI](https://github.com/openai/codex) + Codex içeren bir ChatGPT planı |
+| **İşletim sistemi** | Windows 10/11, macOS veya Linux |
+
+Açık kalan bir bilgisayar. Uyuyan bir dizüstünde kaçan mesajlar, uyanır uyanmaz
+gönderilir.
+
+---
+
+## Kurulum
+
+```bash
+git clone https://github.com/<kullanici>/limitless-5-hour.git
+cd limitless-5-hour
+```
+
+### Windows
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
+```
+
+`Limitless5Hour` adında bir Görev Zamanlayıcı kaydı oluşturur. Senin
+kullanıcınla çalışır, yönetici yetkisi istemez, yeniden başlatma ve uyku
+sonrasında da devam eder.
+
+### macOS / Linux
+
+```bash
+./install/install-unix.sh
+```
+
+macOS'ta LaunchAgent, Linux'ta crontab kaydı oluşturur.
+
+### Sonra bir kez
+
+```bash
+claude auth login       # CLI'ın kendi girişi var, masaüstü uygulamasından ayrı
+codex login             # sadece Codex'i açacaksan
+```
+
+### İlk pencereyi başlat
+
+```bash
+# Windows
+powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Force
+# macOS / Linux
+./bin/keepalive.sh --force
+```
+
+---
+
+## Günlük kullanım
+
+Hiçbir şey yapman gerekmiyor. Duruma bakmak istersen:
+
+```bash
+# Windows
+powershell -ExecutionPolicy Bypass -File bin\keepalive.ps1 -Status
+# macOS / Linux
+./bin/keepalive.sh --status
+```
+
+```
+  Limitless 5-Hour - status
+  ---------------------------------------------------------
+  interval     : 301 minutes
+  quiet hours  : disabled (24/7)
+
+  claude       : enabled
+     last ping   2026-09-05 09:12:04     <- son gönderim
+     window ends 2026-09-05 14:12:04  (3h 41m left)   <- pencere bitişi
+     next ping   2026-09-05 14:13:04     <- yeni pencere
+  codex        : disabled
+
+  scheduler    : installed, state = Ready
+```
+
+Kurulum, birlikte gelen Claude Code becerisini de yüklüyor. Yani Claude'a düz
+Türkçe **"limitim ne durumda?"** diye sorman da yeterli — durumu kendisi
+kontrol edip söylüyor.
+
+---
+
+## Ayarlar
+
+`config.env` dosyasını düzenle (ilk kurulumda `config.example.env`'den
+oluşturulur). Değişiklikler bir sonraki turda geçerli olur, yeniden başlatmaya
+gerek yok.
+
+| Anahtar | Varsayılan | Anlamı |
+|---|---|---|
+| `INTERVAL_MINUTES` | `301` | İki gönderim arası dakika. 300'ün altına inme — açık pencerenin içine mesaj atmak pencereyi boşa harcar. |
+| `CLAUDE_ENABLED` | `true` | Claude penceresini döndür. |
+| `CLAUDE_MODEL` | `haiku` | Gönderimde kullanılan model. En ucuzu en iyisi. |
+| `CLAUDE_PROMPT` | `ok` | Gönderilecek metin. Kısa tut. |
+| `CODEX_ENABLED` | `false` | `true` yaparsan Codex penceresi de dönmeye başlar. |
+| `CODEX_MODEL` | *(boş)* | Boş = Codex ayarındaki varsayılan model. |
+| `CODEX_REASONING_EFFORT` | `minimal` | Codex gönderimini ucuz tutar. |
+| `LOG_RETENTION_DAYS` | `30` | Bundan eski kayıtları siler. `0` = hiç silme. |
+| `QUIET_HOURS` | *(boş)* | Örn. `02:00-08:00` — gece göndermez. Boş = tam 7/24. |
+
+### ChatGPT / Codex'i eklemek
+
+Codex de aynı şekilde sayıyor. İki adım:
+
+```bash
+codex login
+```
+
+sonra `config.env` içinde:
+
+```
+CODEX_ENABLED=true
+```
+
+İki servis birbirinden bağımsız izleniyor; biri limite takılırsa diğeri devam
+eder.
+
+---
+
+## Nasıl çalışıyor
+
+```
+zamanlayıcı (5 dakikada bir)  ->  keepalive scripti
+                                       |
+                                       +-- son başarılı gönderimden bu yana
+                                       |   INTERVAL_MINUTES geçti mi?
+                                       |
+                                     hayır --> çık, hiçbir maliyet yok
+                                       |
+                                     evet --> claude -p "ok" --model haiku ...
+                                              zamanı kaydet
+                                              logs/ içine tek satır yaz
+```
+
+Gönderim zamanına zamanlayıcı değil, **scriptin kendisi** karar veriyor. Uyku,
+yeniden başlatma, kaçan turlar ve saat değişiklikleri bu yüzden sorun olmuyor:
+her uyandığında tek bir şey soruyor — *"301 dakika oldu mu?"*
+
+Gönderim bilerek en yalın hale getirildi:
+
+```
+claude -p "ok" --model haiku
+       --system-prompt "Reply with exactly: ok"   # tüm sistem talimatını değiştirir
+       --restricted                               # Bash yok, kod çalıştırma yok
+       --strict-mcp-config                        # MCP sunucusu yüklenmez
+       --no-session-persistence                   # diske hiçbir şey yazılmaz
+       --permission-mode dontAsk                  # asla izin sorup takılmaz
+       --output-format json
+```
+
+---
+
+## Dosyalar
+
+```
+bin/keepalive.ps1          Windows: her şey burada (gönderim, durum, kayıt)
+bin/keepalive.sh           macOS/Linux: aynısı
+install/install-*.{ps1,sh} Zamanlayıcıyı ve beceriyi kurar
+install/uninstall-*        Zamanlayıcıyı kaldırır (ayar ve kayıtlar kalır)
+skill/limitless-5-hour/    Claude Code becerisi: sohbette limitini sorabilirsin
+config.example.env         config.env için şablon
+logs/                      Her ay için bir kayıt dosyası
+state/                     Son gönderim zamanları
+```
+
+---
+
+## Sorun giderme
+
+**`not logged in - run: claude auth login`**
+CLI'ın kimlik bilgileri masaüstü uygulamasından ayrı. Terminalde bir kez
+`claude auth login` çalıştır.
+
+**Kayıtlarda hiçbir şey yok**
+`-Status` / `--status` çıktısındaki `scheduler` satırına bak. Windows'ta Görev
+Zamanlayıcı'da `Limitless5Hour`'ı, Linux'ta `crontab -l` çıktısını kontrol et.
+
+**`usage limit reached`**
+Pencereni zaten tükettiysen normaldir. Script geri çekilir, bir sonraki turda
+tekrar dener.
+
+**Cron `claude` komutunu bulamıyor**
+Cron çok dar bir `PATH` ile çalışır. Crontab satırına tam yolu yaz ya da
+crontab'ın başına bir `PATH=` satırı ekle.
+
+---
+
+## Kaldırma
+
+```powershell
+powershell -ExecutionPolicy Bypass -File install\uninstall-windows.ps1
+```
+
+```bash
+./install/uninstall-unix.sh
+```
+
+Sadece zamanlayıcı kaydını siler. `config.env`, `logs/` ve `state/` yerinde
+kalır; her şeyi silmek için klasörü kaldırman yeterli.
+
+---
+
+## Lisans
+
+MIT — [LICENSE](LICENSE) dosyasına bak.
+
+Anthropic veya OpenAI ile bağlantılı değildir. Kendi aboneliğinin koşulları
+çerçevesinde kullan.
