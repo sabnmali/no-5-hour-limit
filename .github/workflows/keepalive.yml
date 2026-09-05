@@ -39,6 +39,10 @@ jobs:
     steps:
       - name: Check out
         uses: actions/checkout@v4
+        with:
+          # Full history: the state commit at the end may need to rebase onto
+          # origin, which a shallow clone cannot do.
+          fetch-depth: 0
 
       - name: Is a ping due?
         id: due
