@@ -5,13 +5,13 @@
 .DESCRIPTION
     Registers a Task Scheduler entry that pokes bin\keepalive.ps1 every few
     minutes. The script itself decides whether a ping is actually due, so the
-    frequent poking costs nothing and survives sleep, reboots and missed runs.
+    checks consume no AI usage when nothing is due, and resume after missed runs.
 
     No administrator rights are required: the task runs as the current user.
 
 .PARAMETER CheckMinutes
-    How often the scheduler wakes the script up. Default 5. Lower = the new
-    usage window opens closer to the exact minute it becomes available.
+    How often the scheduler wakes the script up. Default 15. Lower = less
+    polling delay after a ping becomes due; provider window times are unverified.
 
 .PARAMETER TaskName
     Name of the scheduled task. Default "No5HourLimit".
@@ -21,7 +21,7 @@
 #>
 [CmdletBinding()]
 param(
-    [int]    $CheckMinutes = 5,
+    [int]    $CheckMinutes = 15,
     [string] $TaskName = 'No5HourLimit',
     [switch] $NoSkill
 )

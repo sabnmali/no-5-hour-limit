@@ -1,6 +1,6 @@
 // Netlify invokes scheduled functions privately, only on published deployments.
 // The token needs Actions: write for ONE repository, never account-wide access.
-export const config = { schedule: '*/5 * * * *' };
+export const config = { schedule: '*/15 * * * *' };
 
 export async function dispatch(env, request = fetch) {
   const token = env.L5H_GITHUB_DISPATCH_TOKEN;

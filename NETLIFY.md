@@ -1,6 +1,6 @@
 # Independent cloud scheduling
 
-Netlify wakes GitHub Actions every five minutes. Actions still enforces the
+Netlify wakes GitHub Actions every fifteen minutes. Actions still enforces the
 301-minute interval and serializes runs. Netlify never receives AI credentials.
 This removes dependence on GitHub's cron delivery, not GitHub runner availability
 or the providers' quota rules. No component guarantees an always-open window.
@@ -16,11 +16,16 @@ or the providers' quota rules. No component guarantees an always-open window.
    GitHub Actions, then confirm a later scheduled invocation without your PC.
    HTTP 204 means GitHub accepted dispatch, not that a provider was pinged.
 5. Check Netlify function failures and GitHub Actions failures. Renew the token
-   before its expiry. Stay within your Netlify plan; there are about 8,640
+   before its expiry. Stay within your Netlify plan; there are about 2,880
    invocations per 30 days. State-only commits are skipped by the build ignore rule.
 
 No new npm dependencies or public trigger endpoint are used. GitHub cron can
 remain as fallback because all dispatches use the same lock and state.
+
+Each scheduler makes 96 checks per day instead of 288 at five-minute intervals.
+Checks do not send AI prompts unless due. Polling can add up to fifteen minutes
+after the 301-minute threshold, plus any platform scheduling or runner delay.
+These checks are internal operations, not user notifications.
 
 ## Cloud Codex credentials
 

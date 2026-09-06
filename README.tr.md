@@ -50,7 +50,7 @@ anahtar bakımı gerektirir; kalıcı, bakım gerektirmeyen giriş değildir. Bu
 ayrı bir giriş ve yalnızca bu depoya erişen secret güncelleme anahtarıyla
 yenilenen Codex girişini GitHub'a geri kaydeder.
 [Netlify kurulumu ve gerekli yetkiler](NETLIFY.md), GitHub cron geciktiğinde
-beş dakikada bir çalışan bağımsız tetikleyicinin kurulumunu açıklar.
+on beş dakikada bir çalışan bağımsız tetikleyicinin kurulumunu açıklar.
 
 ## Yerel kurulum
 

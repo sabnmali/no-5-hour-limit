@@ -49,7 +49,7 @@ with your desktop login. Cloud Codex is an optional setup requiring credential
 maintenance, not an unattended permanent login. With a dedicated login and a
 repository-scoped secret-update token, the workflow persists refreshed Codex
 credentials. [Netlify setup and credential requirements](NETLIFY.md) also covers
-an independent five-minute dispatcher when GitHub cron is delayed.
+an independent fifteen-minute dispatcher when GitHub cron is delayed.
 
 ## Local installation
 

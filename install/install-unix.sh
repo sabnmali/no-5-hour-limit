@@ -5,7 +5,7 @@
 #   macOS : registers a LaunchAgent (survives sleep and logout properly)
 #   Linux : adds a crontab entry
 #
-#   ./install/install-unix.sh              check every 5 minutes (default)
+#   ./install/install-unix.sh              check every 15 minutes (default)
 #   ./install/install-unix.sh --every 10   check every 10 minutes
 # ---------------------------------------------------------------------------
 set -euo pipefail
@@ -14,20 +14,20 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(dirname "$SCRIPT_DIR")"
 KEEPALIVE="$REPO_ROOT/bin/keepalive.sh"
 
-CHECK_MINUTES=5
+CHECK_MINUTES=15
 LABEL="com.no5hourlimit.keepalive"
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --every) shift; CHECK_MINUTES="${1:-5}" ;;
+        --every) shift; CHECK_MINUTES="${1:-15}" ;;
         -h|--help) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option: $1" >&2; exit 2 ;;
     esac
     shift
 done
 
-case "$CHECK_MINUTES" in ''|*[!0-9]*) CHECK_MINUTES=5 ;; esac
-[ "$CHECK_MINUTES" -ge 1 ] || CHECK_MINUTES=5
+case "$CHECK_MINUTES" in ''|*[!0-9]*) CHECK_MINUTES=15 ;; esac
+[ "$CHECK_MINUTES" -ge 1 ] || CHECK_MINUTES=15
 [ "$CHECK_MINUTES" -le 59 ] || CHECK_MINUTES=59
 CHECK_MINUTES=$((10#$CHECK_MINUTES))
 
