@@ -28,6 +28,9 @@ Choose one scheduler per provider/account across all devices. Claude in the
 cloud and Codex locally is valid; do not enable the same provider in both.
 Prefer local Codex: copied refresh credentials can become stale or conflict
 with the desktop session. Cloud Codex requires ongoing credential maintenance.
+For independent Netlify dispatch and dedicated cloud Codex credential
+persistence, follow NETLIFY.md. Use separate repository-scoped dispatch and
+secret-update tokens; never copy an account-wide GitHub CLI token to Netlify.
 
 ## Cloud route
 

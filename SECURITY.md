@@ -14,6 +14,8 @@ commands on your behalf**.
 |---|---|---|
 | `CLAUDE_CODE_OAUTH_TOKEN` | GitHub repository secret | GitHub Actions at run time; nobody can read it back, including you |
 | `CODEX_AUTH_JSON` | GitHub repository secret | same |
+| `CODEX_SECRET_UPDATE_TOKEN` | GitHub repository secret | workflow; repository-scoped Secrets: write, can replace any secret in this repo |
+| `L5H_GITHUB_DISPATCH_TOKEN` | Netlify production Functions environment | dispatcher; repository-scoped Actions: write only |
 | Local CLI login | Whatever the CLI itself uses (`claude auth login`) | your machine only |
 
 The setup scripts hold the token in memory and pipe it straight into
@@ -43,6 +45,7 @@ gh workflow disable keepalive.yml
 # 2. delete the stored credentials
 gh secret delete CLAUDE_CODE_OAUTH_TOKEN
 gh secret delete CODEX_AUTH_JSON
+gh secret delete CODEX_SECRET_UPDATE_TOKEN
 
 # 3. revoke the token itself, so it is dead even if a copy leaked
 #    Claude: https://claude.ai/settings  ->  revoke the Claude Code token
@@ -52,6 +55,11 @@ gh secret delete CODEX_AUTH_JSON
 
 Step 3 is the one that actually matters. Steps 1 and 2 only stop *this*
 repository from using it.
+
+For the optional Netlify dispatcher, also disable its production scheduled
+function and revoke its dedicated GitHub token. It gets no AI credentials.
+The separate Codex update token must never be supplied to Netlify. See
+[NETLIFY.md](NETLIFY.md) for its access scope and login isolation requirements.
 
 For a local install, `install/uninstall-*` removes the scheduler; the CLI stays
 logged in until you run `claude auth logout`.
@@ -102,10 +110,15 @@ consume subscription usage; enabled paid extra usage can have monetary costs.
 
 ## Deliberately out of scope
 
-The project has no database, no HTTP endpoints, no HTML rendering, no file
+The CLI core has no database, no HTTP endpoints, no HTML rendering, no file
 uploads, no cookies and no password storage, so SQL injection, XSS, CORS,
 security headers, upload limits, session flags and password hashing have no
 surface to apply to here.
+
+The optional Netlify deployment has a static information page and a private
+scheduled function. It validates the repository, uses a fixed GitHub origin,
+refuses redirects, bounds the request time and withholds upstream error bodies.
+Its public page does not expose health, tokens or provider usage.
 
 ## Reporting a problem
 

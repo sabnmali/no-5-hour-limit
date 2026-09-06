@@ -39,7 +39,7 @@ kota tüketir.
 - **Yerel:** Windows Görev Zamanlayıcı, macOS launchd veya Linux cron.
   Mevcut CLI girişini kullanır. Bilgisayar açık, uyanık ve çevrimiçi olmalıdır.
   Windows görevi kullanıcının oturum açmış olmasını gerektirir.
-- **Bulut:** GitHub Actions. Bilgisayar kapalıyken de çalışır. Her 30 dakikada
+- **Bulut:** GitHub Actions. Bilgisayar kapalıyken de çalışır. Her 15 dakikada
   kontrol eder; GitHub çalışmaları geciktirebilir veya atlayabilir. Dakikası
   dakikasına zamanlama garantisi yoktur. Abonelik erişim bilgisi depo secret'ı olur.
 
@@ -47,7 +47,10 @@ kota tüketir.
 Masaüstündeki aynı oturumu geçici bir bulut çalıştırıcısına kopyalamak GitHub'daki
 anahtarı eskitebilir ve masaüstü girişiyle çakışabilir. Bulut Codex desteği
 anahtar bakımı gerektirir; kalıcı, bakım gerektirmeyen giriş değildir. Bu proje
-GitHub secret'larını kendiliğinden yenilemez.
+ayrı bir giriş ve yalnızca bu depoya erişen secret güncelleme anahtarıyla
+yenilenen Codex girişini GitHub'a geri kaydeder.
+[Netlify kurulumu ve gerekli yetkiler](NETLIFY.md), GitHub cron geciktiğinde
+beş dakikada bir çalışan bağımsız tetikleyicinin kurulumunu açıklar.
 
 ## Yerel kurulum
 

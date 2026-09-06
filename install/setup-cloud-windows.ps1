@@ -174,7 +174,13 @@ $token = $null
 Ok 'CLAUDE_CODE_OAUTH_TOKEN stored (it is not saved anywhere on this computer)'
 
 if ($Codex) {
-    $authFile = Join-Path $env:USERPROFILE '.codex\auth.json'
+    if (-not $env:CODEX_HOME) { Die 'Set CODEX_HOME to a separate cloud login directory first. See NETLIFY.md.' }
+    $dedicatedHome = [IO.Path]::GetFullPath($env:CODEX_HOME).TrimEnd('\', '/')
+    $desktopHome = [IO.Path]::GetFullPath((Join-Path $env:USERPROFILE '.codex')).TrimEnd('\', '/')
+    if ($dedicatedHome -eq $desktopHome) { Die 'Do not upload the desktop login. Use a dedicated CODEX_HOME.' }
+    $secretNames = & $gh.Source secret list --repo $Repo --json name --jq '.[].name'
+    if ($LASTEXITCODE -ne 0 -or 'CODEX_SECRET_UPDATE_TOKEN' -notin $secretNames) { Die 'Create repository-scoped CODEX_SECRET_UPDATE_TOKEN first. See NETLIFY.md.' }
+    $authFile = Join-Path $dedicatedHome 'auth.json'
     if (Test-Path -LiteralPath $authFile) {
         Get-Content -LiteralPath $authFile -Raw | & $gh.Source secret set CODEX_AUTH_JSON --repo $Repo
         if ($LASTEXITCODE -eq 0) {

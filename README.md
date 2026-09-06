@@ -39,15 +39,17 @@ both independent schedules wastes quota.
 - **Local:** Windows Task Scheduler, macOS launchd, Linux cron. Uses your existing
   CLI login and persistent credential storage. The computer must be awake and
   online. Windows uses an interactive user task; it requires you to be logged in.
-- **Cloud:** GitHub Actions. Works while your computer is off. Polls every 30
+- **Cloud:** GitHub Actions. Works while your computer is off. Polls every 15
   minutes; GitHub can delay or drop scheduled runs, so timing is not guaranteed.
   Requires a subscription credential stored in your repository's Actions secrets.
 
 **Prefer local Codex.** Its refresh credentials rotate. Copying the same login
 into an ephemeral cloud runner can make the repository secret stale and conflict
 with your desktop login. Cloud Codex is an optional setup requiring credential
-maintenance, not an unattended permanent login. This project does not refresh
-GitHub secrets automatically.
+maintenance, not an unattended permanent login. With a dedicated login and a
+repository-scoped secret-update token, the workflow persists refreshed Codex
+credentials. [Netlify setup and credential requirements](NETLIFY.md) also covers
+an independent five-minute dispatcher when GitHub cron is delayed.
 
 ## Local installation
 

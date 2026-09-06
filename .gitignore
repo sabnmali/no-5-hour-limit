@@ -5,6 +5,7 @@ __pycache__/
 *.pyc
 auth.json
 .env
+.netlify/
 *.pem
 *.key
 

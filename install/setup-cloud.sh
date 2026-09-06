@@ -132,8 +132,11 @@ TOKEN=""
 ok "CLAUDE_CODE_OAUTH_TOKEN stored (it is not saved anywhere on this computer)"
 
 if [ "$WITH_CODEX" -eq 1 ]; then
-    if [ -f "$HOME/.codex/auth.json" ]; then
-        if gh secret set CODEX_AUTH_JSON --repo "$REPO" < "$HOME/.codex/auth.json"; then
+    [ -n "${CODEX_HOME:-}" ] || die 'Set CODEX_HOME to a separate cloud login directory first. See NETLIFY.md.'
+    [ "$(cd "$CODEX_HOME" && pwd -P)" != "$(cd "$HOME/.codex" && pwd -P)" ] || die 'Do not upload the desktop login. Use a dedicated CODEX_HOME.'
+    gh secret list --repo "$REPO" --json name --jq '.[].name' | grep -qx CODEX_SECRET_UPDATE_TOKEN || die 'Create repository-scoped CODEX_SECRET_UPDATE_TOKEN first. See NETLIFY.md.'
+    if [ -f "$CODEX_HOME/auth.json" ]; then
+        if gh secret set CODEX_AUTH_JSON --repo "$REPO" < "$CODEX_HOME/auth.json"; then
             ok "CODEX_AUTH_JSON stored"
             if [ -f "$REPO_ROOT/cloud.env" ]; then
                 tmp="$(mktemp)"
@@ -145,7 +148,7 @@ if [ "$WITH_CODEX" -eq 1 ]; then
             warn "Could not store CODEX_AUTH_JSON - continuing without Codex."
         fi
     else
-        warn "No ~/.codex/auth.json found. Run 'codex login' first if you want Codex too."
+        warn "No auth.json found in CODEX_HOME. Run 'codex login' with that dedicated home first."
     fi
 fi
 

@@ -24,3 +24,5 @@ jobs:
           persist-credentials: false
       - name: Offline regression tests
         run: python3 -m unittest discover -s tests -v
+      - name: Dispatcher regression tests
+        run: node --test tests/test_dispatch.mjs

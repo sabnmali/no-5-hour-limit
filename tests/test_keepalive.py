@@ -36,6 +36,7 @@ if ($env:FAKE_MODE -eq 'slow') { Start-Sleep -Seconds 2 }
 $global:LASTEXITCODE = 0
 if ($env:FAKE_MODE -eq 'exit') { $global:LASTEXITCODE = 7; Write-Output 'secret-test-123'; return }
 if ($env:FAKE_MODE -eq 'invalid') { Write-Output '{}'; return }
+if ($env:FAKE_MODE -eq 'zero') { Write-Output '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1,"output_tokens":0}}'; return }
 if ($env:FAKE_MODE -eq 'codex') { Write-Output '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}'; return }
 Write-Output '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1,"output_tokens":1}}'
 ''')
@@ -46,6 +47,7 @@ echo call >> "$FAKE_COUNT"
 case "$FAKE_MODE" in
 exit) echo secret-test-123; exit 7 ;;
 invalid) echo '{}' ;;
+zero) echo '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1,"output_tokens":0}}' ;;
 codex) echo '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}' ;;
 *) echo '{"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1,"output_tokens":1}}' ;;
 esac
@@ -87,6 +89,12 @@ esac
         result = self.run_cli('--force')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.run_cli().returncode, 0)
+        self.assertEqual(self.calls(), 2)
+
+    def test_zero_output_is_not_a_successful_ping(self):
+        self.env['FAKE_MODE'] = 'zero'
+        self.assertEqual(self.run_cli().returncode, 1)
+        self.assertEqual(self.run_cli().returncode, 1)
         self.assertEqual(self.calls(), 2)
 
     def test_failed_cli_does_not_leak_output(self):

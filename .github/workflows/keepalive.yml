@@ -9,20 +9,20 @@ name: keepalive
 #        CODEX_AUTH_JSON           the contents of ~/.codex/auth.json  (optional)
 #   2. Edit cloud.env to choose the interval and which providers are enabled.
 #
-# GitHub's scheduler is best-effort: a run can be a few minutes to half an hour
-# late, so treat window boundaries as approximate.
+# GitHub's scheduler can be delayed for hours or dropped. An optional Netlify
+# scheduler dispatches this same due-checked workflow independently of cron.
 
 on:
   schedule:
-    # Twice an hour. A run that is not due exits in a few seconds and makes no
+    # Four times an hour. A run that is not due exits in a few seconds and makes no
     # API call at all, so the only real work happens ~5 times a day.
     #
     # Why poll instead of scheduling the ping itself every 301 minutes: cron
     # cannot express "every 301 minutes", and 301 does not divide a 24-hour
     # day, so the ping time drifts forward a little every cycle. The script
     # tracks the real due time; this schedule just has to wake it up often
-    # enough to notice. Halve it to '*/15 * * * *' for tighter boundaries, or
-    # raise it to '0 * * * *' for fewer runs and up to an hour of slack.
+    # enough to notice. These off-peak minutes reduce peak-hour contention;
+    # they do not provide a timing guarantee.
     - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
     inputs:
@@ -108,8 +108,10 @@ jobs:
 
       - name: Restore Codex credentials
         if: success() && steps.due.outputs.due == 'true'
+        id: codex_auth
         env:
           CODEX_AUTH_JSON: ${{ secrets.CODEX_AUTH_JSON }}
+          CODEX_SECRET_UPDATE_TOKEN: ${{ secrets.CODEX_SECRET_UPDATE_TOKEN }}
           ENABLED: ${{ steps.due.outputs.enabled }}
         run: |
           set -euo pipefail
@@ -118,12 +120,17 @@ jobs:
             *) echo "Codex disabled in cloud.env - skipping."; exit 0 ;;
           esac
           if [ -z "${CODEX_AUTH_JSON:-}" ]; then
-            echo "::warning::CODEX_ENABLED is true but the CODEX_AUTH_JSON secret is empty."
-            exit 0
+            echo "::error::CODEX_ENABLED is true but the CODEX_AUTH_JSON secret is empty."
+            exit 1
+          fi
+          if [ -z "${CODEX_SECRET_UPDATE_TOKEN:-}" ]; then
+            echo "::error::Cloud Codex requires a dedicated login and CODEX_SECRET_UPDATE_TOKEN (this repository only, Secrets: write)."
+            exit 1
           fi
           mkdir -p ~/.codex
           printf '%s' "$CODEX_AUTH_JSON" > ~/.codex/auth.json
           chmod 600 ~/.codex/auth.json
+          echo 'restored=true' >> "$GITHUB_OUTPUT"
 
       - name: Ping
         if: success() && steps.due.outputs.due == 'true'
@@ -165,6 +172,19 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
           exit $rc
+
+      - name: Persist refreshed Codex credentials
+        # Login can rotate even if the model request fails. Save before cleanup.
+        if: always() && steps.codex_auth.outputs.restored == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CODEX_SECRET_UPDATE_TOKEN }}
+        run: |
+          set -euo pipefail
+          if ! gh secret set CODEX_AUTH_JSON --repo "$GITHUB_REPOSITORY" < "$HOME/.codex/auth.json" >/dev/null 2>&1; then
+            echo '::error::Could not save Codex credentials. Cloud login may need renewal; inspect the update token permissions/expiry.'
+            exit 1
+          fi
+          echo 'Codex credentials saved securely.'
 
       - name: Save the new state
         # Runs even when the ping failed, so a partial success is not lost.
