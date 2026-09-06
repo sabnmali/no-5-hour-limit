@@ -300,6 +300,9 @@ function Invoke-ClaudePing {
     try { $inTok  = [int] $json.usage.input_tokens }  catch { }
     try { $outTok = [int] $json.usage.output_tokens } catch { }
     try { $ms     = [int] $json.duration_ms }         catch { }
+    if ($outTok -le 0) {
+        return @{ ok = $false; message = 'claude returned no output tokens; quota-window activation is unverified' }
+    }
 
     return @{
         ok = $true

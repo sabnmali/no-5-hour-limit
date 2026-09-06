@@ -23,7 +23,7 @@ on:
     # tracks the real due time; this schedule just has to wake it up often
     # enough to notice. Halve it to '*/15 * * * *' for tighter boundaries, or
     # raise it to '0 * * * *' for fewer runs and up to an hour of slack.
-    - cron: '*/30 * * * *'
+    - cron: '7,22,37,52 * * * *'
   workflow_dispatch:
     inputs:
       force:

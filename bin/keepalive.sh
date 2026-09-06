@@ -329,7 +329,15 @@ ping_claude() {
         return 1
     fi
 
-    PING_MESSAGE="claude ok (model=$CLAUDE_MODEL)"
+    # A local/cached acknowledgement without model usage is not a verified ping.
+    # Only emit numeric usage fields; never expose raw output or credentials.
+    local output_tokens
+    output_tokens="$(printf '%s' "$out" | grep -oE '"output_tokens"[[:space:]]*:[[:space:]]*[0-9]+' | head -1 | tr -cd '0-9')"
+    if [ -z "$output_tokens" ] || [ "$output_tokens" = 0 ]; then
+        PING_MESSAGE='claude returned no output tokens; quota-window activation is unverified'
+        return 1
+    fi
+    PING_MESSAGE="claude ok (model=$CLAUDE_MODEL output_tokens=$output_tokens; provider reset time unverified)"
     return 0
 }
 
