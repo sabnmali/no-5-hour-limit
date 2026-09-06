@@ -48,7 +48,7 @@ jobs:
       - name: Check out
         # Pinned to a commit, not a tag: a tag can be moved to point at
         # different code, and this job holds a token for the user's subscription.
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Shallow: most runs do nothing, and this repo's history grows by a
           # commit per ping. The save step deepens it only if a push is
