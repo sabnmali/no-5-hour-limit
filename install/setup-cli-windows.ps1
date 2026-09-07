@@ -104,7 +104,7 @@ if (-not $SkipLogin -and $exe) {
 # --------------------------------------------------------------------------
 # 3. Re-run the installer so the new path gets pinned
 # --------------------------------------------------------------------------
-Write-Head 'Step 3 / 3 - re-registering the scheduled task'
+Write-Head 'Step 3 / 3 - CLI ready; local automation remains unchanged'
 
 if ($native) {
     # Put the native build ahead of the npm shim for this process, so the
@@ -112,7 +112,7 @@ if ($native) {
     $env:PATH = (Split-Path -Parent $native) + ';' + $env:PATH
 }
 
-& powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-windows.ps1')
+Write-Host 'Local scheduling is separate and requires install\install-windows.ps1 -EnableLocal.'
 
 Write-Host ''
 Write-Host '  Installer finished. Check status before sending another ping:' -ForegroundColor Green

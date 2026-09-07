@@ -63,9 +63,15 @@ it straight to `gh secret set`.
 
 ## Local route
 
+Windows laptop safety: local automation requires explicit `-EnableLocal`.
+Never reactivate a disabled task while troubleshooting laptop disruption unless
+the user asks. Use install/disable-local-windows.ps1 to stop this checkout's task.
+Do not enable WakeToRun or battery execution. Hidden PowerShell does not prove
+there can be no console flash; do not attribute display changes without evidence.
+
 ```bash
 # Windows
-powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
+powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -EnableLocal
 # macOS / Linux
 ./install/install-unix.sh
 ```

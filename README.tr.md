@@ -38,7 +38,9 @@ kota tüketir.
 
 - **Yerel:** Windows Görev Zamanlayıcı, macOS launchd veya Linux cron.
   Mevcut CLI girişini kullanır. Bilgisayar açık, uyanık ve çevrimiçi olmalıdır.
-  Windows görevi kullanıcının oturum açmış olmasını gerektirir.
+  Windows görevi ayrıca açıkça etkinleştirilmelidir; oturum ve priz bağlantısı
+  gerektirir. Bilgisayarı uyandırmaz. Bazı CLI işlemleri kısa konsol parlaması
+  oluşturabilir; laptopta rahatsızlık varsa yerel otomasyonu kapat.
 - **Bulut:** GitHub Actions. Bilgisayar kapalıyken de çalışır. Her 15 dakikada
   kontrol eder; GitHub çalışmaları geciktirebilir veya atlayabilir. Dakikası
   dakikasına zamanlama garantisi yoktur. Abonelik erişim bilgisi depo secret'ı olur.
@@ -81,7 +83,7 @@ CODEX_ENABLED=true
 Windows:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File install\install-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File install\install-windows.ps1 -EnableLocal
 ```
 
 macOS / Linux:
@@ -175,6 +177,17 @@ zamanı geldiyse 0, iş yoksa 3 döner. `--enabled` açık servisleri listeler.
 Normal çalışmada servis veya durum yazma hatası 1 döndürür.
 
 ## Sorun giderme ve kaldırma
+
+PowerShell pencereleri açılıyorsa veya laptopun uykusu etkileniyorsa:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File install\disable-local-windows.ps1
+```
+
+Bu işlem görevi durdurur, devre dışı bırakır ve uyandırma iznini kaldırır.
+Ayarları ve hesap girişini silmez. Kurucu `-EnableLocal` verilmeden değişiklik
+yapmaz; CLI kurulum yardımcısı da görevi yeniden etkinleştirmez. Ekran/HDR
+sorununun nedeni ayrıca doğrulanmalıdır; bu script ekran ayarlarını değiştirmez.
 
 Yeşil GitHub çalışması yalnızca “henüz zamanı gelmedi” anlamına gelebilir.
 Gerçek mesajı **Ping** adımı ve kayıtlı zamanlarla kontrol et. Güvenlik için ham

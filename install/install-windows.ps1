@@ -16,17 +16,27 @@
 .PARAMETER TaskName
     Name of the scheduled task. Default "No5HourLimit".
 
+.PARAMETER EnableLocal
+    Explicitly opt into laptop automation. Without this switch nothing is changed.
+    Interactive CLI processes can briefly flash a console on some Windows systems.
+
 .EXAMPLE
-    powershell -ExecutionPolicy Bypass -File install\install-windows.ps1
+    powershell -ExecutionPolicy Bypass -File install\install-windows.ps1 -EnableLocal
 #>
 [CmdletBinding()]
 param(
     [int]    $CheckMinutes = 15,
     [string] $TaskName = 'No5HourLimit',
-    [switch] $NoSkill
+    [switch] $NoSkill,
+    [switch] $EnableLocal
 )
 
 $ErrorActionPreference = 'Stop'
+
+# A setup/helper invocation must not silently reactivate laptop automation.
+if (-not $EnableLocal) {
+    throw 'Local automation is opt-in. No changes made. Use -EnableLocal only if you want a laptop task; use install\disable-local-windows.ps1 to stop an existing task.'
+}
 
 $RepoRoot  = Split-Path -Parent $PSScriptRoot
 $Keepalive = Join-Path $RepoRoot 'bin\keepalive.ps1'
@@ -151,15 +161,14 @@ try {
 }
 
 $settings = New-ScheduledTaskSettingsSet `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries `
-    -StartWhenAvailable `
     -MultipleInstances IgnoreNew `
     -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
     -Hidden
 
-try { $settings.WakeToRun = $true } catch { }
-try { $settings.DisallowStartIfOnBatteries = $false } catch { }
+$settings.WakeToRun = $false
+$settings.StartWhenAvailable = $false
+$settings.DisallowStartIfOnBatteries = $true
+$settings.StopIfGoingOnBatteries = $true
 
 $principal = New-ScheduledTaskPrincipal `
     -UserId ('{0}\{1}' -f $env:USERDOMAIN, $env:USERNAME) `
@@ -172,7 +181,7 @@ Register-ScheduledTask `
     -Trigger $trigger `
     -Settings $settings `
     -Principal $principal `
-    -Description 'No 5-Hour Limit: keeps Claude / Codex 5-hour usage windows rolling.' `
+    -Description 'Optional local keepalive: requires an awake, signed-in computer on AC power; provider reset times are unverified.' `
     -Force | Out-Null
 
 Write-Ok ("scheduled task '{0}' registered - checks every {1} minute(s)" -f $TaskName, $CheckMinutes)

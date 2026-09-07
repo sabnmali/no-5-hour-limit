@@ -6,7 +6,21 @@ import subprocess
 import tempfile
 import unittest
 
-from test_keepalive import BASH, ROOT
+from test_keepalive import BASH, PS, ROOT
+
+
+@unittest.skipUnless(PS, 'PowerShell unavailable')
+class WindowsInstallerSafetyTests(unittest.TestCase):
+    def test_without_opt_in_has_no_side_effects(self):
+        with tempfile.TemporaryDirectory(prefix='keepalive opt-in ') as temp:
+            repo = Path(temp)
+            (repo / 'install').mkdir()
+            installer = repo / 'install/install-windows.ps1'
+            shutil.copy2(ROOT / 'install/install-windows.ps1', installer)
+            result = subprocess.run([PS, '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', str(installer)], capture_output=True, text=True, timeout=20)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('Local automation is opt-in', result.stdout + result.stderr)
+            self.assertEqual(sorted(p.relative_to(repo).as_posix() for p in repo.rglob('*')), ['install', 'install/install-windows.ps1'])
 
 
 @unittest.skipUnless(BASH, 'Bash unavailable')

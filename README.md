@@ -38,7 +38,8 @@ both independent schedules wastes quota.
 
 - **Local:** Windows Task Scheduler, macOS launchd, Linux cron. Uses your existing
   CLI login and persistent credential storage. The computer must be awake and
-  online. Windows uses an interactive user task; it requires you to be logged in.
+  online. Windows is opt-in, requires you to be logged in and on AC power,
+  and never wakes the computer. Some CLI console processes may still flash.
 - **Cloud:** GitHub Actions. Works while your computer is off. Polls every 15
   minutes; GitHub can delay or drop scheduled runs, so timing is not guaranteed.
   Requires a subscription credential stored in your repository's Actions secrets.
@@ -79,7 +80,7 @@ CODEX_ENABLED=true
 Windows:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File install\install-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File install\install-windows.ps1 -EnableLocal
 ```
 
 macOS / Linux:
@@ -176,6 +177,16 @@ and quiet hours; it does not reset a live window. Bash `--due` exits 0 if due,
 prints the enabled providers. Normal execution exits 1 on provider/state failure.
 
 ## Troubleshooting and removal
+
+If the laptop shows console flashes or sleep disruption, stop local automation:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File install\disable-local-windows.ps1
+```
+
+This keeps the task disabled, removes wake permission, and preserves login and
+configuration. Neither the installer without `-EnableLocal` nor the CLI setup
+helper can silently enable it again. It does not diagnose display/HDR changes.
 
 A green GitHub run can mean only “nothing due.” Inspect the **Ping** step and
 saved timestamps to verify an actual message. CLI errors intentionally withhold
